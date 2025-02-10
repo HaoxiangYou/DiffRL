@@ -196,7 +196,8 @@ class GPS:
             with torch.no_grad():
                 self.obs_buf[i] = obs.clone()
 
-            action = self.actor(obs, deterministic = deterministic)
+            # detach the obs from computation graph
+            action = self.actor(obs.detach(), deterministic = deterministic)
             obs, rew, done, extra_info = self.env.step(torch.tanh(action))
             actions.append(action)
             
