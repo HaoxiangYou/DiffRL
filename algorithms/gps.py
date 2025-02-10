@@ -174,7 +174,7 @@ class GPS:
         
         actor_loss = torch.tensor(0., dtype = torch.float32, device = self.device)
 
-        actions = []
+        # actions = []
 
         with torch.no_grad():
             if self.obs_rms is not None:
@@ -199,7 +199,7 @@ class GPS:
             # detach the obs from computation graph
             action = self.actor(obs.detach(), deterministic = deterministic)
             obs, rew, done, extra_info = self.env.step(torch.tanh(action))
-            actions.append(action)
+            # actions.append(action)
             
             with torch.no_grad():
                 raw_rew = rew.clone()
@@ -301,7 +301,8 @@ class GPS:
             
         self.step_count += self.steps_num * self.num_envs
 
-        return actor_loss, actions
+        # return actor_loss, actions
+        return actor_loss
     
     @torch.no_grad()
     def evaluate_policy(self, num_games, deterministic = False):
@@ -408,28 +409,30 @@ class GPS:
             self.time_report.start_timer("compute actor loss")
 
             self.time_report.start_timer("forward simulation")
-            actor_loss, actions = self.compute_actor_loss()
+            # actor_loss, actions = self.compute_actor_loss()
+            actor_loss = self.compute_actor_loss()
             self.time_report.end_timer("forward simulation")
 
             self.time_report.start_timer("backward simulation")
-            # update the actions via gradient descent
-            action_grads = torch.autograd.grad(actor_loss, actions)
-            # the learning rate does not matter since it cancel out
-            with torch.no_grad():
-                updated_actions = torch.stack([a - g for a, g in zip(actions, action_grads)])
+            # # update the actions via gradient descent
+            # action_grads = torch.autograd.grad(actor_loss, actions)
+            # # the learning rate does not matter since it cancel out
+            # with torch.no_grad():
+            #     updated_actions = torch.stack([a - g for a, g in zip(actions, action_grads)])
             
-            # recomputate the actions from detached from computation graph
-            if isinstance(self.actor, models.actor.ActorStochasticMLP):
-                with torch.no_grad():
-                    # obtain the same epsilon from standard normal sample
-                    actions = torch.stack(actions)
-                    eps = (actions - self.actor.mu_net(self.obs_buf)) / self.actor.logstd.exp()
-                # reparameterized tricks 
-                actions = self.actor.mu_net(self.obs_buf) + eps * self.actor.logstd.exp()
-            else:
-                actions = self.actor(self.obs_buf)
-            supervised_learning_loss = 1/2 * torch.nn.functional.mse_loss(actions, updated_actions, reduction="sum")
-            supervised_learning_loss.backward()
+            # # recomputate the actions from detached from computation graph
+            # if isinstance(self.actor, models.actor.ActorStochasticMLP):
+            #     with torch.no_grad():
+            #         # obtain the same epsilon from standard normal sample
+            #         actions = torch.stack(actions)
+            #         eps = (actions - self.actor.mu_net(self.obs_buf)) / self.actor.logstd.exp()
+            #     # reparameterized tricks 
+            #     actions = self.actor.mu_net(self.obs_buf) + eps * self.actor.logstd.exp()
+            # else:
+            #     actions = self.actor(self.obs_buf)
+            # supervised_learning_loss = 1/2 * torch.nn.functional.mse_loss(actions, updated_actions, reduction="sum")
+            # supervised_learning_loss.backward()
+            actor_loss.backward()
             self.time_report.end_timer("backward simulation")
 
             with torch.no_grad():
