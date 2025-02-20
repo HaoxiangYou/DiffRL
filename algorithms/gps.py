@@ -18,6 +18,7 @@ import time
 import numpy as np
 import copy
 import torch
+import pickle
 from tensorboardX import SummaryWriter
 import yaml
 
@@ -305,7 +306,7 @@ class GPS:
         return actor_loss
     
     @torch.no_grad()
-    def evaluate_policy(self, num_games, deterministic = False):
+    def evaluate_policy(self, num_games, deterministic=False, stored_traj=False, log_dir=None, checkpoint_name=None):
         episode_length_his = []
         episode_loss_his = []
         episode_discounted_loss_his = []
@@ -314,7 +315,19 @@ class GPS:
         episode_gamma = torch.ones(self.num_envs, dtype = torch.float32, device = self.device)
         episode_discounted_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
 
+        if stored_traj:
+            if log_dir is None:
+                log_dir = "./"
+            if checkpoint_name is None:
+                checkpoint_name = self.env.__class__.__name__
+            file_path = os.path.join(log_dir, f"traj_{checkpoint_name}.pkl")
+            joint_qs = []
+            joint_qds = []
+
         obs = self.env.reset()
+        if stored_traj:
+            joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().cpu().numpy())
+            joint_qds.append(self.env.state.joint_qd.view(self.num_envs, -1).detach().cpu().numpy())
 
         games_cnt = 0
         while games_cnt < num_games:
@@ -324,6 +337,9 @@ class GPS:
             actions = self.actor(obs, deterministic = deterministic)
 
             obs, rew, done, _ = self.env.step(torch.tanh(actions))
+            if stored_traj:
+                joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().cpu().numpy())
+                joint_qds.append(self.env.state.joint_qd.view(self.num_envs, -1).detach().cpu().numpy())
 
             episode_length += 1
 
@@ -344,6 +360,11 @@ class GPS:
                     episode_gamma[done_env_id] = 1.
                     games_cnt += 1
         
+        if stored_traj:
+            trajs = {"dt":self.env.sim_dt, "joint_q":np.stack(joint_qs), "joint_qd":np.stack(joint_qds)}
+            with open(file_path, "wb") as f:
+                pickle.dump(trajs, f)
+
         mean_episode_length = np.mean(np.array(episode_length_his))
         mean_policy_loss = np.mean(np.array(episode_loss_his))
         mean_policy_discounted_loss = np.mean(np.array(episode_discounted_loss_his))
@@ -378,8 +399,9 @@ class GPS:
         self.env.reset()
 
     @torch.no_grad()
-    def run(self, num_games):
-        mean_policy_loss, mean_policy_discounted_loss, mean_episode_length = self.evaluate_policy(num_games = num_games, deterministic = not self.stochastic_evaluation)
+    def run(self, num_games, stored_traj=False, log_dir=None, checkpoint_name=None):
+        mean_policy_loss, mean_policy_discounted_loss, mean_episode_length = self.evaluate_policy(num_games = num_games, deterministic = not self.stochastic_evaluation, 
+                                                                                                stored_traj=stored_traj, log_dir=log_dir, checkpoint_name=checkpoint_name)
         print_info('mean episode loss = {}, mean discounted loss = {}, mean episode length = {}'.format(mean_policy_loss, mean_policy_discounted_loss, mean_episode_length))
         
     def train(self):
@@ -582,7 +604,7 @@ class GPS:
     
     def play(self, cfg):
         self.load(cfg['params']['general']['checkpoint'])
-        self.run(cfg['params']['config']['player']['games_num'])
+        self.run(cfg['params']['config']['player']['games_num'], stored_traj=True, log_dir=os.path.dirname(cfg['params']['general']['checkpoint']), checkpoint_name=os.path.splitext(os.path.basename(cfg['params']['general']['checkpoint']))[0])
         
     def save(self, filename = None):
         if filename is None:
