@@ -83,7 +83,8 @@ class CartPoleSwingUpEnv(DFlexEnv):
         for i in range(self.num_environments):
             lu.urdf_load(self.builder, 
                                 os.path.join(asset_folder, 'cartpole.urdf'),
-                                df.transform((0.0, 2.5, 0.0 + self.env_dist * i), df.quat_from_axis_angle((1.0, 0.0, 0.0), -math.pi*0.5)), 
+                                # df.transform((0.0, 2.5, 0.0 + self.env_dist * i), df.quat_from_axis_angle((1.0, 0.0, 0.0), -math.pi*0.5)), 
+                                df.transform((0.0, 2.5, 0.0), df.quat_from_axis_angle((1.0, 0.0, 0.0), -math.pi*0.5)), 
                                 floating=False,
                                 shape_kd=1e4,
                                 limit_kd=1.)

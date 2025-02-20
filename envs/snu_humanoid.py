@@ -150,7 +150,8 @@ class SNUHumanoidEnv(DFlexEnv):
                                         armature=0.05)
 
             # set initial position 1m off the ground
-            self.builder.joint_q[skeleton.coord_start + 2] = i * self.env_dist
+            # self.builder.joint_q[skeleton.coord_start + 2] = i * self.env_dist
+            self.builder.joint_q[skeleton.coord_start + 2] = 0
             self.builder.joint_q[skeleton.coord_start + 1] = start_height
 
             self.builder.joint_q[skeleton.coord_start + 3:skeleton.coord_start + 7] = self.start_rot
