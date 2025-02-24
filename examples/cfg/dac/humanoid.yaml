@@ -1,23 +1,23 @@
 params:  
   diff_env:
-    name: SNUHumanoidEnv
+    name: HumanoidEnv
     stochastic_env: True
     episode_length: 1000
-    MM_caching_frequency: 8
-
+    MM_caching_frequency: 48
+  
   network:
     actor: ActorStochasticMLP
     actor_mlp:
-      units: [512, 256]
+      units: [256, 128]
       activation: elu
 
     critic: CriticMLP
     critic_mlp:
-      units: [256, 256]
+      units: [128, 128]
       activation: elu
 
   config:
-    name: df_snu_humanoid_gps
+    name: df_humanoid_dac
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 5e-4 # adam
     lr_schedule: linear # ['constant', 'linear']
@@ -25,7 +25,7 @@ params:
     obs_rms: True
     ret_rms: False
     critic_iterations: 16
-    critic_method: td-lambda
+    critic_method: td-lambda 
     lambda: 0.95
     num_batch: 4
     gamma: 0.99
@@ -34,7 +34,7 @@ params:
     steps_num: 32
     grad_norm: 1.0 
     truncate_grads: True
-    num_actors: 64
+    num_actors: 64 
     save_interval: 400
 
     player:

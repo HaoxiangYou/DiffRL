@@ -17,7 +17,7 @@ params:
       activation: elu
 
   config:
-    name: df_cartpole_swing_up_gps
+    name: df_cartpole_swing_up_dac
     actor_learning_rate: 1e-2 # adam
     critic_learning_rate: 1e-3 # adam
     lr_schedule: linear # ['constant', 'linear']
