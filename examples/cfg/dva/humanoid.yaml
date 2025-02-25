@@ -17,7 +17,7 @@ params:
       activation: elu
 
   config:
-    name: df_humanoid_dac
+    name: df_humanoid_dva
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 5e-4 # adam
     lr_schedule: linear # ['constant', 'linear']

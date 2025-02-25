@@ -6,7 +6,7 @@ sys.path.append(project_dir)
 import argparse
 
 import envs
-import algorithms.dac as dac
+import algorithms.dva as dva
 import os
 import sys
 import yaml
@@ -56,13 +56,13 @@ def get_args(): # TODO: delve into the arguments
     custom_parameters = [
         {"name": "--test", "action": "store_true", "default": False,
             "help": "Run trained policy, no training"},
-        {"name": "--cfg", "type": str, "default": "./cfg/dac/ant.yaml",
+        {"name": "--cfg", "type": str, "default": "./cfg/dva/ant.yaml",
             "help": "Configuration file for training/playing"},
         {"name": "--play", "action": "store_true", "default": False,
             "help": "Run trained policy, the same as test"},
         {"name": "--checkpoint", "type": str, "default": "Base",
             "help": "Path to the saved weights"},
-        {"name": "--logdir", "type": str, "default": "logs/tmp/dac/"},
+        {"name": "--logdir", "type": str, "default": "logs/tmp/dva/"},
         {"name": "--save-interval", "type": int, "default": 0},
         {"name": "--no-time-stamp", "action": "store_true", "default": False,
             "help": "whether not add time stamp at the log path"},
@@ -73,7 +73,7 @@ def get_args(): # TODO: delve into the arguments
     
     # parse arguments
     args = parse_arguments(
-        description="DAC",
+        description="DVA",
         custom_parameters=custom_parameters)
     
     return args
@@ -98,7 +98,7 @@ if __name__ == '__main__':
     for key in vargs.keys():
         cfg_train["params"]["general"][key] = vargs[key]
 
-    traj_optimizer = dac.DAC(cfg_train)
+    traj_optimizer = dva.DVA(cfg_train)
 
     if args.train:
         traj_optimizer.train()

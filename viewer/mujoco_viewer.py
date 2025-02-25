@@ -40,8 +40,8 @@ if __name__ == "__main__":
     import imageio
 
     xml_file = os.path.join(project_dir, "envs/assets/ant.xml")
-    traj_path = os.path.join(project_dir, "examples/logs/Ant/dac/0/traj_final_policy.pkl")
-    output_path = os.path.join(project_dir, "examples/logs/Ant/dac/0/final_policy.mp4")
+    traj_path = os.path.join(project_dir, "examples/logs/Ant/dva/0/traj_final_policy.pkl")
+    output_path = os.path.join(project_dir, "examples/logs/Ant/dva/0/final_policy.mp4")
 
     viewer = MujocoViewer(xml_file, camera_id=2, root_pos_index=0, root_quat_index=3)
     with open(traj_path, "rb") as f:
