@@ -1,10 +1,3 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
 from envs.dflex_env import DFlexEnv
 import math
 import torch
@@ -225,6 +218,27 @@ class AntEnv(DFlexEnv):
 
         return self.obs_buf
     
+    '''
+    This function returns joint_q in mujoco conventions
+    '''
+    def get_mujoco_joint_q(self, dflex_q:torch.Tensor):
+        mujoco_q = dflex_q.clone()
+        assert len(mujoco_q.shape) == 2 or len(mujoco_q.shape) == 1
+        if len(mujoco_q.shape) == 2:
+            # align xyz convention for base pos
+            pos = mujoco_q[:, :3]
+            pos = torch.hstack([pos[:, 0:1], -pos[:, 2:3], pos[:, 1:2]])
+            mujoco_q[:, :3] = pos
+            # rotate the quat back
+            quat = mujoco_q[:, 3:7]
+            quat = tu.quat_mul(torch.tile(self.inv_start_rot[0:1,:], (mujoco_q.shape[0], 1)), quat)
+            quat = quat[:, [3, 0, 1, 2]]
+            mujoco_q[:, 3:7] = quat
+        else:
+            mujoco_q[:3] = torch.tensor([mujoco_q[0], -mujoco_q[2], mujoco_q[1]])
+            mujoco_q[3:7] = tu.quat_mul(self.inv_start_rot[0,:], mujoco_q[3:7])[[3,0,1,2]]
+        return mujoco_q
+
     '''
     cut off the gradient from the current state to previous states
     '''
