@@ -139,8 +139,7 @@ class HumanoidEnv(DFlexEnv):
                 load_armature=True)
 
             # base transform
-            # start_pos_z = i*self.env_dist
-            start_pos_z = 0
+            start_pos_z = i*self.env_dist
             self.start_pos.append([0.0, start_height, start_pos_z])
 
             self.builder.joint_q[i*self.num_joint_q:i*self.num_joint_q + 3] = self.start_pos[-1]
