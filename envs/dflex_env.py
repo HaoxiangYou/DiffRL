@@ -30,7 +30,7 @@ class DFlexEnv:
 
         self.device = device
 
-        self.visualize = render
+        self.record = render
 
         self.sim_time = 0.0
 

@@ -74,15 +74,15 @@ class HumanoidEnv(DFlexEnv):
         self.height_rew_scale = 10.0
 
         #-----------------------
-        # set up Usd renderer
-        if (self.visualize):
+        # set up Usd recorder
+        if (self.record):
             self.stage = Usd.Stage.CreateNew("outputs/" + "Humanoid_" + str(self.num_envs) + ".usd")
 
-            self.renderer = df.render.UsdRenderer(self.model, self.stage)
-            self.renderer.draw_points = True
-            self.renderer.draw_springs = True
-            self.renderer.draw_shapes = True
-            self.render_time = 0.0
+            self.recorder = df.render.UsdRenderer(self.model, self.stage)
+            self.recorder.draw_points = True
+            self.recorder.draw_springs = True
+            self.recorder.draw_shapes = True
+            self.recording_time = 0.0
 
     def init_sim(self):
         self.builder = df.sim.ModelBuilder()
@@ -173,10 +173,10 @@ class HumanoidEnv(DFlexEnv):
         if (self.model.ground):
             self.model.collide(self.state)
 
-    def render(self, mode = 'human'):
-        if self.visualize:
-            self.render_time += self.dt
-            self.renderer.update(self.state, self.render_time)
+    def recording(self, mode = 'human'):
+        if self.record:
+            self.recording_time += self.dt
+            self.recorder.update(self.state, self.recording_time)
 
             if (self.num_frames == 1):
                 try:
@@ -233,7 +233,7 @@ class HumanoidEnv(DFlexEnv):
         if len(env_ids) > 0:
            self.reset(env_ids)
 
-        self.render()
+        self.recording()
 
         return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
     

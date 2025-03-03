@@ -54,15 +54,15 @@ class CartPoleSwingUpEnv(DFlexEnv):
         self.cart_action_penalty = 0.0
 
         #-----------------------
-        # set up Usd renderer
-        if (self.visualize):
+        # set up Usd recorder
+        if (self.record):
             self.stage = Usd.Stage.CreateNew("outputs/" + "CartPoleSwingUp_" + str(self.num_envs) + ".usd")
 
-            self.renderer = df.render.UsdRenderer(self.model, self.stage)
-            self.renderer.draw_points = True
-            self.renderer.draw_springs = True
-            self.renderer.draw_shapes = True
-            self.render_time = 0.0
+            self.recorder = df.render.UsdRenderer(self.model, self.stage)
+            self.recorder.draw_points = True
+            self.recorder.draw_springs = True
+            self.recorder.draw_shapes = True
+            self.recording_time = 0.0
 
     def init_sim(self):
         self.builder = df.sim.ModelBuilder()
@@ -71,7 +71,7 @@ class CartPoleSwingUpEnv(DFlexEnv):
         self.sim_substeps = 4
         self.sim_dt = self.dt
 
-        if self.visualize:
+        if self.record:
             self.env_dist = 1.0
         else:
             self.env_dist = 0.0
@@ -100,10 +100,10 @@ class CartPoleSwingUpEnv(DFlexEnv):
         self.start_joint_q = self.state.joint_q.clone()
         self.start_joint_qd = self.state.joint_qd.clone()
 
-    def render(self, mode = 'human'):
-        if self.visualize:
-            self.render_time += self.dt
-            self.renderer.update(self.state, self.render_time)
+    def recording(self, mode = 'human'):
+        if self.record:
+            self.recording_time += self.dt
+            self.recorder.update(self.state, self.recording_time)
             if (self.num_frames == 40):
                 try:
                     self.stage.Save()
@@ -147,7 +147,7 @@ class CartPoleSwingUpEnv(DFlexEnv):
                 self.reset(env_ids)
         
         with df.ScopedTimer("render", active=False, detailed=False):
-            self.render()
+            self.recording()
 
         #self.extras = {'obs_before_reset': self.obs_buf_before_reset}
         

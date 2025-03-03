@@ -73,15 +73,15 @@ class SNUHumanoidEnv(DFlexEnv):
         self.joint_vel_obs_scaling = 0.1
 
         #-----------------------
-        # set up Usd renderer
-        if (self.visualize):
+        # set up Usd recorder
+        if (self.record):
             self.stage = Usd.Stage.CreateNew("outputs/" + self.name + "HumanoidSNU_Low_" + str(self.num_envs) + ".usd")
 
-            self.renderer = df.render.UsdRenderer(self.model, self.stage)
-            self.renderer.draw_points = True
-            self.renderer.draw_springs = True
-            self.renderer.draw_shapes = True
-            self.render_time = 0.0
+            self.recorder = df.render.UsdRenderer(self.model, self.stage)
+            self.recorder.draw_points = True
+            self.recorder.draw_springs = True
+            self.recorder.draw_shapes = True
+            self.recording_time = 0.0
 
     def init_sim(self):
         self.builder = df.sim.ModelBuilder()
@@ -195,9 +195,9 @@ class SNUHumanoidEnv(DFlexEnv):
         if (self.model.ground):
             self.model.collide(self.state)
 
-    def render(self, mode = 'human'):
+    def recording(self, mode = 'human'):
 
-        if self.visualize:
+        if self.record:
             with torch.no_grad():
 
                 muscle_start = 0
@@ -211,7 +211,7 @@ class SNUHumanoidEnv(DFlexEnv):
 
                             mesh_path = os.path.join(self.asset_folder, "OBJ/" + mesh + ".usd")
 
-                            self.renderer.add_mesh(mesh, mesh_path, X_sc, 1.0, self.render_time)
+                            self.rec.add_mesh(mesh, mesh_path, X_sc, 1.0, self.recording_time)
 
                     for m in range(len(s.muscles)):
 
@@ -229,13 +229,13 @@ class SNUHumanoidEnv(DFlexEnv):
 
                             points.append(Gf.Vec3f(df.transform_point(X_sc, point).tolist()))
                         
-                        self.renderer.add_line_strip(points, name=s.muscles[m].name + str(skel_index), radius=0.0075, color=(self.model.muscle_activation[muscle_start + m]/self.muscle_strengths[m], 0.2, 0.5), time=self.render_time)
+                        self.recorder.add_line_strip(points, name=s.muscles[m].name + str(skel_index), radius=0.0075, color=(self.model.muscle_activation[muscle_start + m]/self.muscle_strengths[m], 0.2, 0.5), time=self.recording_time)
                     
                     muscle_start += len(s.muscles)
                     skel_index += 1
 
-            self.render_time += self.dt * self.inv_control_freq
-            self.renderer.update(self.state, self.render_time)
+            self.recording_time += self.dt * self.inv_control_freq
+            self.recorder.update(self.state, self.recording_time)
 
             if (self.num_frames == 1):
                 try:
@@ -297,7 +297,7 @@ class SNUHumanoidEnv(DFlexEnv):
            self.reset(env_ids)
 
         with df.ScopedTimer("render", False):
-            self.render()
+            self.recording()
 
         return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
     
