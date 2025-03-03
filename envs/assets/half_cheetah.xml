@@ -33,6 +33,9 @@
 
 -->
 <mujoco model="cheetah">
+  <include file="./common/skybox.xml"/>
+  <include file="./common/visual.xml"/>
+  <include file="./common/materials.xml"/>
   <compiler angle="radian" coordinate="local" inertiafromgeom="true" settotalmass="14"/>
   <default>
     <joint armature=".1" damping=".01" limited="true" solimplimit="0 .8 .03" solreflimit=".02 1" stiffness="8"/>
@@ -42,7 +45,12 @@
   <size nstack="300000" nuser_geom="1"/>
   <option gravity="0 0 -9.81" timestep="0.01"/>
   <worldbody>
-    <body name="torso" pos="0 0 0">   
+    <!-- shac ground z=-0.2 -->
+    <geom name="ground" type="plane" conaffinity="0" pos="98 0 -0.2" size="100 .8 .5" material="grid" rgba="1 1 1 1"/>
+    <body name="torso" pos="0 0 0.75"> 
+      <light name="light" pos="0 0 2" mode="trackcom"/>
+      <camera name="side" pos="0 -3 0" quat="0.707 0.707 0 0" mode="trackcom"/>
+      <camera name="back" pos="-1.8 -1.3 0.8" xyaxes="0.45 -0.9 0 0.3 0.15 0.94" mode="trackcom"/>
       <joint armature="0" axis="1 0 0" damping="0" limited="false" name="ignorex" pos="0 0 0" stiffness="0" type="slide"/>
       <joint armature="0" axis="0 0 1" damping="0" limited="false" name="ignorez" pos="0 0 0" stiffness="0" type="slide"/>
       <joint armature="0" axis="0 1 0" damping="0" limited="false" name="ignorey" pos="0 0 0" stiffness="0" type="hinge"/>      
@@ -58,7 +66,7 @@
           <body name="bfoot" pos="-.28 0 -.14">
             <joint axis="0 1 0" damping="3" name="bfoot" pos="0 0 0" range="-.4 .785" stiffness="120" type="hinge"/>
             <geom axisangle="0 1 0 -.27" name="bfoot" pos=".03 0 -.097" rgba="0.9 0.6 0.6 1" size="0.046 .094" type="capsule"/>
-            <inertial mass="10"/>
+            <!-- <inertial mass="10"/> -->
           </body>
         </body>
       </body>
@@ -71,7 +79,7 @@
           <body name="ffoot" pos=".13 0 -.18">
             <joint axis="0 1 0" damping="1.5" name="ffoot" pos="0 0 0" range="-3.1 -0.3" stiffness="60" type="hinge"/>
             <geom axisangle="0 1 0 -.6" name="ffoot" pos=".045 0 -.07" rgba="0.9 0.6 0.6 1" size="0.046 .07" type="capsule"/>
-            <inertial mass="10"/>
+            <!-- <inertial mass="10"/> -->
           </body>
         </body>
       </body>
