@@ -46,7 +46,7 @@
   <option gravity="0 0 -9.81" timestep="0.01"/>
   <worldbody>
     <!-- shac ground z=-0.2 -->
-    <geom name="ground" type="plane" conaffinity="0" pos="98 0 -0.2" size="100 .8 .5" material="grid" rgba="1 1 1 1"/>
+    <geom name="ground" type="plane" conaffinity="0" pos="0 0 -0.2" size="200 200 .5" material="grid" rgba="1 1 1 1"/>
     <body name="torso" pos="0 0 0.75"> 
       <light name="light" pos="0 0 2" mode="trackcom"/>
       <camera name="side" pos="0 -3 0" quat="0.707 0.707 0 0" mode="trackcom"/>
