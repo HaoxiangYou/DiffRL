@@ -11,7 +11,8 @@ import torch
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, project_dir)
 
 import dflex as df
 
@@ -25,20 +26,31 @@ except ModuleNotFoundError:
 
 from utils import load_utils as lu
 from utils import torch_utils as tu
-
+from viewer.dmc_viewer import DMCViewer
+from viewer.video_recorder import VideoRecorder
 
 class CheetahEnv(DFlexEnv):
 
-    def __init__(self, render=False, device='cuda:0', num_envs=4096, seed=0, episode_length=1000, no_grad=True, stochastic_init=False, MM_caching_frequency = 1, early_termination = False):
+    def __init__(self, render=False, render_mode="usd", device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84,
+                vis_obs=False, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
         num_obs = 17
         num_act = 6
     
-        super(CheetahEnv, self).__init__(num_envs, num_obs, num_act, episode_length, MM_caching_frequency, seed, no_grad, render, device)
+        super(CheetahEnv, self).__init__(num_envs, num_obs, num_act, episode_length, MM_caching_frequency, seed, 
+                                    no_grad=no_grad, render=render, device=device, vis_obs=vis_obs, 
+                                    img_height=img_height, img_width=img_width, render_mode=render_mode)
 
         self.stochastic_init = stochastic_init
         self.early_termination = early_termination
 
         self.init_sim()
+
+        # whether output images as observation
+        self.dmc_render = None
+        if self.vis_obs:
+            self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/half_cheetah.xml"), 
+                                    camera_id=0, height=self.obs_img_height, width=self.obs_img_width)
+            self._vis_frames = []
 
         # other parameters
         self.action_strength = 200.0
@@ -47,13 +59,24 @@ class CheetahEnv(DFlexEnv):
         #-----------------------
         # set up Usd recorder
         if (self.record):
-            self.stage = Usd.Stage.CreateNew("outputs/" + "Cheetah_" + str(self.num_envs) + ".usd")
+            # recording using usd
+            if self.render_mode == "usd":
+                self.stage = Usd.Stage.CreateNew("outputs/" + "Cheetah_" + str(self.num_envs) + ".usd")
 
-            self.recorder = df.render.UsdRenderer(self.model, self.stage)
-            self.recorder.draw_points = True
-            self.recorder.draw_springs = True
-            self.recorder.draw_shapes = True
-            self.recording_time = 0.0
+                self.recorder = df.render.UsdRenderer(self.model, self.stage)
+                self.recorder.draw_points = True
+                self.recorder.draw_springs = True
+                self.recorder.draw_shapes = True
+                self.recording_time = 0.0
+            # recording using dmc
+            elif self.render_mode == "dmc":
+                if self.dmc_render is None:
+                    self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/half_cheetah.xml"), 
+                                            camera_id=0, height=img_height, width=img_width)
+                # make the high resolution videos for eval
+                self.recorder = VideoRecorder(root_dir="outputs", fps=int(1/self.sim_dt), height=256, width=256, camera_id=0)
+            else:
+                raise ValueError("render mode have to be usd or dmc")
 
     def init_sim(self):
         self.builder = df.sim.ModelBuilder()
@@ -129,19 +152,38 @@ class CheetahEnv(DFlexEnv):
         if (self.model.ground):
             self.model.collide(self.state)
 
-    def recording(self, mode = 'human'):
+    def recording(self):
         if self.record:
-            self.recording_time += self.dt
-            self.recorder.update(self.state, self.recording_time)
+            if self.render_mode == "usd":
+                recording_interval = 1
+                self.recording_time += self.dt
+                self.recorder.update(self.state, self.recording_time)
+                if (self.num_frames == recording_interval):
+                    try:
+                        self.stage.Save()
+                    except:
+                        print("USD save error")
+                    self.num_frames -= recording_interval
+            elif self.render_mode == "dmc":
+                # using the recorder render_kwargs 
+                pixels = self.render(self.recorder.render_kwargs)
+                # only record the first envs
+                self.recorder.append(pixels[0])
+                if self.reset_buf[0]:
+                    self.recorder.save("cheetah.mp4")
 
-            recording_interval = 1
-            if (self.num_frames == recording_interval):
-                try:
-                    self.stage.Save()
-                except:
-                    print("USD save error")
-
-                self.num_frames -= recording_interval
+    """
+    This function render imgs for all envs
+    """
+    def render(self, render_kwargs=None):
+        frames = []
+        if self.dmc_render:
+            mujoco_joint_qs = self.state.joint_q.view(self.num_envs, -1).clone().detach().cpu().numpy()
+            for mujoco_joint_q in mujoco_joint_qs:
+                frames.append(self.dmc_render.render(mujoco_joint_q, render_kwargs))
+            return np.stack(frames)
+        else:
+            raise ValueError("Render is being called without dmc render")
 
     def step(self, actions):
         actions = actions.view((self.num_envs, self.num_actions))

@@ -6,11 +6,9 @@ os.environ['MUJOCO_GL'] = 'egl'
 from dm_control.mujoco.engine import Physics
 
 class DMCViewer:
-    def __init__(self, file_path:str, height=84, width=84, camera_id=0, root_pos_index=None, root_quat_index=None):
+    def __init__(self, file_path:str, height=84, width=84, camera_id=0):
         self.physics = Physics.from_xml_path(file_path)
         self.render_kwargs = dict(height=height, width=width, camera_id=camera_id)
-        self.root_pos_index = root_pos_index
-        self.root_quat_index = root_quat_index
 
     def render(self, qpos:np.ndarray, render_kwargs=None):
         """
