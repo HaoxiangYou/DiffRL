@@ -132,15 +132,15 @@ class CartPoleSwingUpEnv(DFlexEnv):
         self.calculateReward()
 
         if self.no_grad == False:
-            self.obs_buf_before_reset = self.obs_buf.clone()
+            self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
-                'obs_before_reset': self.obs_buf_before_reset,
+                'obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
-        #self.obs_buf_before_reset = self.obs_buf.clone()
+        #self.state_obs_buf_before_reset = self.state_obs_buf.clone()
 
         with df.ScopedTimer("reset", active=False, detailed=False):
             if len(env_ids) > 0:
@@ -149,9 +149,9 @@ class CartPoleSwingUpEnv(DFlexEnv):
         with df.ScopedTimer("render", active=False, detailed=False):
             self.recording()
 
-        #self.extras = {'obs_before_reset': self.obs_buf_before_reset}
+        #self.extras = {'obs_before_reset': self.state_obs_buf_before_reset}
         
-        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return self.state_obs_buf, self.rew_buf, self.reset_buf, self.extras
     
     def reset(self, env_ids=None, force_reset=True):
         if env_ids is None:
@@ -178,7 +178,7 @@ class CartPoleSwingUpEnv(DFlexEnv):
 
             self.calculateObservations()
 
-        return self.obs_buf
+        return self.state_obs_buf
 
     '''
     cut off the gradient from the current state to previous states
@@ -200,7 +200,7 @@ class CartPoleSwingUpEnv(DFlexEnv):
     def initialize_trajectory(self):
         self.clear_grad()
         self.calculateObservations()
-        return self.obs_buf
+        return self.state_obs_buf
 
     def calculateObservations(self):
         x = self.state.joint_q.view(self.num_envs, -1)[:, 0:1]
@@ -209,7 +209,7 @@ class CartPoleSwingUpEnv(DFlexEnv):
         theta_dot = self.state.joint_qd.view(self.num_envs, -1)[:, 1:2]
 
         # observations: [x, xdot, sin(theta), cos(theta), theta_dot]
-        self.obs_buf = torch.cat([x, xdot, torch.sin(theta), torch.cos(theta), theta_dot], dim = -1)
+        self.state_obs_buf = torch.cat([x, xdot, torch.sin(theta), torch.cos(theta), theta_dot], dim = -1)
 
     def calculateReward(self):
         x = self.state.joint_q.view(self.num_envs, -1)[:, 0]

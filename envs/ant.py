@@ -28,6 +28,8 @@ class AntEnv(DFlexEnv):
                 vis_obs=False, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
         num_obs = 37
         num_act = 8
+
+        import pdb; pdb.set_trace()
     
         super(AntEnv, self).__init__(num_envs, num_obs, num_act, episode_length, MM_caching_frequency, seed, 
                                     no_grad=no_grad, render=render, device=device, vis_obs=vis_obs, 
@@ -175,7 +177,7 @@ class AntEnv(DFlexEnv):
                     self.recorder.save("ant.mp4")
 
     """
-    This function render imgs for target env_ids
+    This function render imgs for target envs
     """
     def render(self, env_ids, render_kwargs=None):
         frames = []
@@ -212,9 +214,9 @@ class AntEnv(DFlexEnv):
             self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
 
         if self.no_grad == False:
-            self.obs_buf_before_reset = self.obs_buf.clone()
+            self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
-                'obs_before_reset': self.obs_buf_before_reset,
+                'obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
 
@@ -223,7 +225,7 @@ class AntEnv(DFlexEnv):
 
         self.recording()
 
-        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return self.state_obs_buf, self.rew_buf, self.reset_buf, self.extras
     
     def reset(self, env_ids = None, force_reset = True):
         if env_ids is None:
@@ -262,7 +264,7 @@ class AntEnv(DFlexEnv):
                 for _ in range(3):
                     self.calculateVisualObservations(env_ids)
 
-        return self.obs_buf
+        return self.state_obs_buf
     
     '''
     This function returns joint_q in mujoco conventions
@@ -313,7 +315,7 @@ class AntEnv(DFlexEnv):
         self.clear_grad()
         self.calculateStateObservations()
 
-        return self.obs_buf
+        return self.state_obs_buf
 
     def get_checkpoint(self):
         checkpoint = {}
@@ -327,7 +329,7 @@ class AntEnv(DFlexEnv):
     """
     This function calculate the low-dimension state related observation such as velocity in world frame
 
-    The resulted obs_buf is fully differentialable c
+    The resulted state_obs_buf is fully differentialable c
     """
     def calculateStateObservations(self):
         torso_pos = self.state.joint_q.view(self.num_envs, -1)[:, 0:3]
@@ -347,7 +349,7 @@ class AntEnv(DFlexEnv):
         up_vec = tu.quat_rotate(torso_quat, self.basis_vec1)
         heading_vec = tu.quat_rotate(torso_quat, self.basis_vec0)
 
-        self.obs_buf = torch.cat([torso_pos[:, 1:2], # 0
+        self.state_obs_buf = torch.cat([torso_pos[:, 1:2], # 0
                                 torso_rot, # 1:5
                                 lin_vel, # 5:8
                                 ang_vel, # 8:11
@@ -362,26 +364,26 @@ class AntEnv(DFlexEnv):
     
     Each visual observation is a stack of three images from [t_2, t_1] to current 
 
-    The resulted vis_obs_buf is not differentiable 
+    The resulted vis_state_obs_buf is not differentiable 
     """
     @torch.no_grad()
     def calculateVisualObservations(self, env_ids):
         # shifting images forword 
-        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
+        self.vis_state_obs_buf[env_ids, :6, :, :] = self.vis_state_obs_buf[env_ids, 3:, :, :]
         # append new images
         pixels = self.render(env_ids)
-        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
+        self.vis_state_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
 
     def calculateReward(self):
-        up_reward = 0.1 * self.obs_buf[:, 27]
-        heading_reward = self.obs_buf[:, 28]
-        height_reward = self.obs_buf[:, 0] - self.termination_height
+        up_reward = 0.1 * self.state_obs_buf[:, 27]
+        heading_reward = self.state_obs_buf[:, 28]
+        height_reward = self.state_obs_buf[:, 0] - self.termination_height
 
-        progress_reward = self.obs_buf[:, 5]
+        progress_reward = self.state_obs_buf[:, 5]
 
         self.rew_buf = progress_reward + up_reward + heading_reward + height_reward + torch.sum(self.actions ** 2, dim = -1) * self.action_penalty
 
         # reset agents
         if self.early_termination:
-            self.reset_buf = torch.where(self.obs_buf[:, 0] < self.termination_height, torch.ones_like(self.reset_buf), self.reset_buf)
+            self.reset_buf = torch.where(self.state_obs_buf[:, 0] < self.termination_height, torch.ones_like(self.reset_buf), self.reset_buf)
         self.reset_buf = torch.where(self.progress_buf > self.episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)

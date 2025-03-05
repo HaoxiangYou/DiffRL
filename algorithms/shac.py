@@ -129,7 +129,7 @@ class SHAC:
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), betas = cfg['params']['config']['betas'], lr = self.critic_lr)
 
         # replay buffer
-        self.obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_obs), dtype = torch.float32, device = self.device)
+        self.state_obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_obs), dtype = torch.float32, device = self.device)
         self.rew_buf = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.done_mask = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.next_values = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
@@ -191,7 +191,7 @@ class SHAC:
         for i in range(self.steps_num):
             # collect data for critic training
             with torch.no_grad():
-                self.obs_buf[i] = obs.clone()
+                self.state_obs_buf[i] = obs.clone()
 
             actions = self.actor(obs, deterministic = deterministic)
 
@@ -452,7 +452,7 @@ class SHAC:
             self.time_report.start_timer("prepare critic dataset")
             with torch.no_grad():
                 self.compute_target_values()
-                dataset = CriticDataset(self.batch_size, self.obs_buf, self.target_values, drop_last = False)
+                dataset = CriticDataset(self.batch_size, self.state_obs_buf, self.target_values, drop_last = False)
             self.time_report.end_timer("prepare critic dataset")
 
             self.time_report.start_timer("critic training")

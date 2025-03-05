@@ -287,9 +287,9 @@ class SNUHumanoidEnv(DFlexEnv):
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
 
         if self.no_grad == False:
-            self.obs_buf_before_reset = self.obs_buf.clone()
+            self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
-                'obs_before_reset': self.obs_buf_before_reset,
+                'obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
 
@@ -299,7 +299,7 @@ class SNUHumanoidEnv(DFlexEnv):
         with df.ScopedTimer("render", False):
             self.recording()
 
-        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return self.state_obs_buf, self.rew_buf, self.reset_buf, self.extras
     
     def reset(self, env_ids = None, force_reset = True):
         if env_ids is None:
@@ -333,7 +333,7 @@ class SNUHumanoidEnv(DFlexEnv):
 
             self.calculateObservations()
         
-        return self.obs_buf
+        return self.state_obs_buf
     
     '''
     cut off the gradient from the current state to previous states
@@ -363,7 +363,7 @@ class SNUHumanoidEnv(DFlexEnv):
         self.clear_grad()
         self.calculateObservations()
 
-        return self.obs_buf
+        return self.state_obs_buf
 
     def get_checkpoint(self):
         checkpoint = {}
@@ -392,7 +392,7 @@ class SNUHumanoidEnv(DFlexEnv):
         up_vec = tu.quat_rotate(torso_quat, self.basis_vec1)
         heading_vec = tu.quat_rotate(torso_quat, self.basis_vec0)
         
-        self.obs_buf = torch.cat([torso_pos[:, 1:2], # 0
+        self.state_obs_buf = torch.cat([torso_pos[:, 1:2], # 0
                                 torso_rot, # 1:5
                                 lin_vel, # 5:8
                                 ang_vel, # 8:11
@@ -403,27 +403,27 @@ class SNUHumanoidEnv(DFlexEnv):
                                 dim = -1)
 
     def calculateReward(self):
-        up_reward = 0.1 * self.obs_buf[:, 51]
-        heading_reward = self.obs_buf[:, 52]
+        up_reward = 0.1 * self.state_obs_buf[:, 51]
+        heading_reward = self.state_obs_buf[:, 52]
 
-        height_diff = self.obs_buf[:, 0] - (self.termination_height + self.termination_tolerance)
+        height_diff = self.state_obs_buf[:, 0] - (self.termination_height + self.termination_tolerance)
         height_reward = torch.clip(height_diff, -1.0, self.termination_tolerance)
         height_reward = torch.where(height_reward < 0.0, -200.0 * height_reward * height_reward, height_reward) # JIE: not smooth
         height_reward = torch.where(height_reward > 0.0, self.height_rew_scale * height_reward, height_reward)
         
         act_penalty = torch.sum(torch.abs(self.actions), dim = -1) * self.action_penalty #torch.sum(self.actions ** 2, dim = -1) * self.action_penalty
 
-        progress_reward = self.obs_buf[:, 5]
+        progress_reward = self.state_obs_buf[:, 5]
 
         self.rew_buf = progress_reward + up_reward + heading_reward + act_penalty
         
         # reset agents
-        self.reset_buf = torch.where(self.obs_buf[:, 0] < self.termination_height, torch.ones_like(self.reset_buf), self.reset_buf)
+        self.reset_buf = torch.where(self.state_obs_buf[:, 0] < self.termination_height, torch.ones_like(self.reset_buf), self.reset_buf)
         self.reset_buf = torch.where(self.progress_buf > self.episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
 
         # an ugly fix for simulation nan values
-        nan_masks = torch.logical_or(torch.isnan(self.obs_buf).sum(-1) > 0, torch.logical_or(torch.isnan(self.state.joint_q.view(self.num_environments, -1)).sum(-1) > 0, torch.isnan(self.state.joint_qd.view(self.num_environments, -1)).sum(-1) > 0))
-        inf_masks = torch.logical_or(torch.isinf(self.obs_buf).sum(-1) > 0, torch.logical_or(torch.isinf(self.state.joint_q.view(self.num_environments, -1)).sum(-1) > 0, torch.isinf(self.state.joint_qd.view(self.num_environments, -1)).sum(-1) > 0))
+        nan_masks = torch.logical_or(torch.isnan(self.state_obs_buf).sum(-1) > 0, torch.logical_or(torch.isnan(self.state.joint_q.view(self.num_environments, -1)).sum(-1) > 0, torch.isnan(self.state.joint_qd.view(self.num_environments, -1)).sum(-1) > 0))
+        inf_masks = torch.logical_or(torch.isinf(self.state_obs_buf).sum(-1) > 0, torch.logical_or(torch.isinf(self.state.joint_q.view(self.num_environments, -1)).sum(-1) > 0, torch.isinf(self.state.joint_qd.view(self.num_environments, -1)).sum(-1) > 0))
         invalid_value_masks = torch.logical_or((torch.abs(self.state.joint_q.view(self.num_environments, -1)) > 1e6).sum(-1) > 0,
                                                 (torch.abs(self.state.joint_qd.view(self.num_environments, -1)) > 1e6).sum(-1) > 0)   
         invalid_masks = torch.logical_or(invalid_value_masks, torch.logical_or(nan_masks, inf_masks))

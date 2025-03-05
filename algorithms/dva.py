@@ -135,7 +135,7 @@ class DVA:
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), betas = cfg['params']['config']['betas'], lr = self.critic_lr)
 
         # replay buffer
-        self.obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_obs), dtype = torch.float32, device = self.device)
+        self.state_obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_obs), dtype = torch.float32, device = self.device)
         self.rew_buf = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.done_mask = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.next_values = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
@@ -199,7 +199,7 @@ class DVA:
         for i in range(self.steps_num):
             # collect data for critic training
             with torch.no_grad():
-                self.obs_buf[i] = obs.clone()
+                self.state_obs_buf[i] = obs.clone()
 
             # detach the obs from computation graph
             action = self.actor(obs.detach(), deterministic = deterministic)
@@ -451,11 +451,11 @@ class DVA:
             #     with torch.no_grad():
             #         # obtain the same epsilon from standard normal sample
             #         actions = torch.stack(actions)
-            #         eps = (actions - self.actor.mu_net(self.obs_buf)) / self.actor.logstd.exp()
+            #         eps = (actions - self.actor.mu_net(self.state_obs_buf)) / self.actor.logstd.exp()
             #     # reparameterized tricks 
-            #     actions = self.actor.mu_net(self.obs_buf) + eps * self.actor.logstd.exp()
+            #     actions = self.actor.mu_net(self.state_obs_buf) + eps * self.actor.logstd.exp()
             # else:
-            #     actions = self.actor(self.obs_buf)
+            #     actions = self.actor(self.state_obs_buf)
             # supervised_learning_loss = 1/2 * torch.nn.functional.mse_loss(actions, updated_actions, reduction="sum")
             # supervised_learning_loss.backward()
             actor_loss.backward()
@@ -502,7 +502,7 @@ class DVA:
             self.time_report.start_timer("prepare critic dataset")
             with torch.no_grad():
                 self.compute_target_values()
-                dataset = CriticDataset(self.batch_size, self.obs_buf, self.target_values, drop_last = False)
+                dataset = CriticDataset(self.batch_size, self.state_obs_buf, self.target_values, drop_last = False)
             self.time_report.end_timer("prepare critic dataset")
 
             self.time_report.start_timer("critic training")

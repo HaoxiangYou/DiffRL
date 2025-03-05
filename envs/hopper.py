@@ -214,9 +214,9 @@ class HopperEnv(DFlexEnv):
             self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
 
         if self.no_grad == False:
-            self.obs_buf_before_reset = self.obs_buf.clone()
+            self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
-                'obs_before_reset': self.obs_buf_before_reset,
+                'obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
 
@@ -225,7 +225,7 @@ class HopperEnv(DFlexEnv):
 
         self.recording()
 
-        return self.obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return self.state_obs_buf, self.rew_buf, self.reset_buf, self.extras
     
     def reset(self, env_ids = None, force_reset = True):
         if env_ids is None:
@@ -262,7 +262,7 @@ class HopperEnv(DFlexEnv):
                 for _ in range(3):
                     self.calculateVisualObservations(env_ids)
         
-        return self.obs_buf
+        return self.state_obs_buf
     
     '''
     cut off the gradient from the current state to previous states
@@ -292,7 +292,7 @@ class HopperEnv(DFlexEnv):
         self.clear_grad()
         self.calculateStateObservations()
 
-        return self.obs_buf
+        return self.state_obs_buf
 
     def get_checkpoint(self):
         checkpoint = {}
@@ -306,39 +306,39 @@ class HopperEnv(DFlexEnv):
     """
     This function calculate the low-dimension state related observation such as velocity in world frame
 
-    The resulted obs_buf is fully differentialable c
+    The resulted state_obs_buf is fully differentialable c
     """
     def calculateStateObservations(self):
-        self.obs_buf = torch.cat([self.state.joint_q.view(self.num_envs, -1)[:, 1:], self.state.joint_qd.view(self.num_envs, -1)], dim = -1)
+        self.state_obs_buf = torch.cat([self.state.joint_q.view(self.num_envs, -1)[:, 1:], self.state.joint_qd.view(self.num_envs, -1)], dim = -1)
 
     """
     This function calculate visual observations for given env_ids
     
     Each visual observation is a stack of three images from [t_2, t_1] to current 
 
-    The resulted vis_obs_buf is not differentiable 
+    The resulted vis_state_obs_buf is not differentiable 
     """
     @torch.no_grad()
     def calculateVisualObservations(self, env_ids):
         # shifting images forword 
-        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
+        self.vis_state_obs_buf[env_ids, :6, :, :] = self.vis_state_obs_buf[env_ids, 3:, :, :]
         # append new images
         pixels = self.render(env_ids)
-        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
+        self.vis_state_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
 
     def calculateReward(self):
-        height_diff = self.obs_buf[:, 0] - (self.termination_height + self.termination_height_tolerance)
+        height_diff = self.state_obs_buf[:, 0] - (self.termination_height + self.termination_height_tolerance)
         height_reward = torch.clip(height_diff, -1.0, 0.3)
         height_reward = torch.where(height_reward < 0.0, -200.0 * height_reward * height_reward, height_reward)
         height_reward = torch.where(height_reward > 0.0, self.height_rew_scale * height_reward, height_reward)
         
-        angle_reward = 1. * (-self.obs_buf[:, 1] ** 2 / (self.termination_angle ** 2) + 1.)
+        angle_reward = 1. * (-self.state_obs_buf[:, 1] ** 2 / (self.termination_angle ** 2) + 1.)
 
-        progress_reward = self.obs_buf[:, 5]
+        progress_reward = self.state_obs_buf[:, 5]
 
         self.rew_buf = progress_reward + height_reward + angle_reward + torch.sum(self.actions ** 2, dim = -1) * self.action_penalty
         
         # reset agents
         self.reset_buf = torch.where(self.progress_buf > self.episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
         if self.early_termination:
-            self.reset_buf = torch.where(self.obs_buf[:, 0] < self.termination_height, torch.ones_like(self.reset_buf), self.reset_buf)
+            self.reset_buf = torch.where(self.state_obs_buf[:, 0] < self.termination_height, torch.ones_like(self.reset_buf), self.reset_buf)

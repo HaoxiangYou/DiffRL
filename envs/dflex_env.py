@@ -57,10 +57,10 @@ class DFlexEnv:
         self.act_space = spaces.Box(np.ones(self.num_actions) * -1., np.ones(self.num_actions) * 1.)
 
         # allocate buffers
-        self.obs_buf = torch.zeros(
+        self.state_obs_buf = torch.zeros(
             (self.num_envs, self.num_observations), device=self.device, dtype=torch.float, requires_grad=False)
         # visual observation buffers
-        self.vis_obs_buf = torch.zeros(
+        self.vis_state_obs_buf = torch.zeros(
             (num_envs, 9, self.obs_img_height, self.obs_img_width), device=self.device, dtype=torch.uint8, requires_grad=False)
         self.rew_buf = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.float, requires_grad=False)
@@ -118,4 +118,4 @@ class DFlexEnv:
 
             self.calculateObservations()
 
-        return self.obs_buf
+        return self.state_obs_buf
