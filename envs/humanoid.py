@@ -320,6 +320,10 @@ class HumanoidEnv(DFlexEnv):
                 for _ in range(3):
                     self.calculateVisualObservations(env_ids)
 
+        obs = {"state_obs":self.state_obs_buf}
+        if self.vis_obs:
+            obs["vis_obs"] = self.vis_obs_buf
+
         return self.state_obs_buf
     
     '''
@@ -399,15 +403,15 @@ class HumanoidEnv(DFlexEnv):
     
     Each visual observation is a stack of three images from [t_2, t_1] to current 
 
-    The resulted vis_state_obs_buf is not differentiable 
+    The resulted vis_obs_buf is not differentiable 
     """
     @torch.no_grad()
     def calculateVisualObservations(self, env_ids):
         # shifting images forword 
-        self.vis_state_obs_buf[env_ids, :6, :, :] = self.vis_state_obs_buf[env_ids, 3:, :, :]
+        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
         # append new images
         pixels = self.render(env_ids)
-        self.vis_state_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
+        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
         
     '''
     This function returns joint_q in mujoco conventions
