@@ -62,9 +62,9 @@ class BPTT:
         self.actor_lr = float(cfg["params"]["config"]["actor_learning_rate"])
         self.lr_schedule = cfg['params']['config'].get('lr_schedule', 'linear')
 
-        self.obs_rms = None
-        if cfg['params']['config'].get('obs_rms', False):
-            self.obs_rms = RunningMeanStd(shape = (self.num_obs), device = self.device)
+        self.state_obs_rms = None
+        if cfg['params']['config'].get('state_obs_rms', False):
+            self.state_obs_rms = RunningMeanStd(shape = (self.num_obs), device = self.device)
 
         self.rew_scale = cfg['params']['config'].get('rew_scale', 1.0)
 
@@ -139,17 +139,17 @@ class BPTT:
         actor_loss = torch.tensor(0., dtype = torch.float32, device = self.device)
 
         with torch.no_grad():
-            if self.obs_rms is not None:
-                obs_rms = copy.deepcopy(self.obs_rms)
+            if self.state_obs_rms is not None:
+                state_obs_rms = copy.deepcopy(self.state_obs_rms)
 
         obs = self.env.initialize_trajectory()
         
-        if self.obs_rms is not None:
+        if self.state_obs_rms is not None:
             # update obs rms
             with torch.no_grad():
-                self.obs_rms.update(obs)
+                self.state_obs_rms.update(obs)
             # normalize the current obs
-            obs = obs_rms.normalize(obs)
+            obs = state_obs_rms.normalize(obs)
 
         for i in range(self.steps_num):
             actions = self.actor(obs, deterministic = deterministic)
@@ -162,12 +162,12 @@ class BPTT:
             # scale the reward
             rew = rew * self.rew_scale
             
-            if self.obs_rms is not None:
+            if self.state_obs_rms is not None:
                 # update obs rms
                 with torch.no_grad():
-                    self.obs_rms.update(obs)
+                    self.state_obs_rms.update(obs)
                 # normalize the current obs
-                obs = obs_rms.normalize(obs)
+                obs = state_obs_rms.normalize(obs)
 
             self.episode_length += 1
 
@@ -233,8 +233,8 @@ class BPTT:
 
         games_cnt = 0
         while games_cnt < num_games:
-            if self.obs_rms is not None:
-                obs = self.obs_rms.normalize(obs)
+            if self.state_obs_rms is not None:
+                obs = self.state_obs_rms.normalize(obs)
 
             actions = self.actor(obs, deterministic = deterministic)
 
@@ -412,12 +412,12 @@ class BPTT:
     def save(self, filename = None):
         if filename is None:
             filename = 'best_policy'
-        torch.save([self.actor, self.obs_rms], os.path.join(self.log_dir, "{}.pt".format(filename)))
+        torch.save([self.actor, self.state_obs_rms], os.path.join(self.log_dir, "{}.pt".format(filename)))
     
     def load(self, path):
         checkpoint = torch.load(path)
         self.actor = checkpoint[0].to(self.device)
-        self.obs_rms = checkpoint[1].to(self.device)
+        self.state_obs_rms = checkpoint[1].to(self.device)
         
     def close(self):
         self.writer.close()

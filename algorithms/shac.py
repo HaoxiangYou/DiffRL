@@ -70,9 +70,9 @@ class SHAC:
         
         self.target_critic_alpha = cfg['params']['config'].get('target_critic_alpha', 0.4)
 
-        self.obs_rms = None
-        if cfg['params']['config'].get('obs_rms', False):
-            self.obs_rms = RunningMeanStd(shape = (self.num_obs), device = self.device)
+        self.state_obs_rms = None
+        if cfg['params']['config'].get('state_obs_rms', False):
+            self.state_obs_rms = RunningMeanStd(shape = (self.num_obs), device = self.device)
             
         self.ret_rms = None
         if cfg['params']['config'].get('ret_rms', False):
@@ -174,20 +174,20 @@ class SHAC:
         actor_loss = torch.tensor(0., dtype = torch.float32, device = self.device)
 
         with torch.no_grad():
-            if self.obs_rms is not None:
-                obs_rms = copy.deepcopy(self.obs_rms)
+            if self.state_obs_rms is not None:
+                state_obs_rms = copy.deepcopy(self.state_obs_rms)
                 
             if self.ret_rms is not None:
                 ret_var = self.ret_rms.var.clone()
 
         # initialize trajectory to cut off gradients between episodes.
         obs = self.env.initialize_trajectory()
-        if self.obs_rms is not None:
+        if self.state_obs_rms is not None:
             # update obs rms
             with torch.no_grad():
-                self.obs_rms.update(obs)
+                self.state_obs_rms.update(obs)
             # normalize the current obs
-            obs = obs_rms.normalize(obs)
+            obs = state_obs_rms.normalize(obs)
         for i in range(self.steps_num):
             # collect data for critic training
             with torch.no_grad():
@@ -203,12 +203,12 @@ class SHAC:
             # scale the reward
             rew = rew * self.rew_scale
             
-            if self.obs_rms is not None:
+            if self.state_obs_rms is not None:
                 # update obs rms
                 with torch.no_grad():
-                    self.obs_rms.update(obs)
+                    self.state_obs_rms.update(obs)
                 # normalize the current obs
-                obs = obs_rms.normalize(obs)
+                obs = state_obs_rms.normalize(obs)
 
             if self.ret_rms is not None:
                 # update ret rms
@@ -232,8 +232,8 @@ class SHAC:
                 elif self.episode_length[id] < self.max_episode_length: # early termination
                     next_values[i + 1, id] = 0.
                 else: # otherwise, use terminal value critic to estimate the long-term performance
-                    if self.obs_rms is not None:
-                        real_obs = obs_rms.normalize(extra_info['obs_before_reset'][id])
+                    if self.state_obs_rms is not None:
+                        real_obs = state_obs_rms.normalize(extra_info['obs_before_reset'][id])
                     else:
                         real_obs = extra_info['obs_before_reset'][id]
                     next_values[i + 1, id] = self.target_critic(real_obs).squeeze(-1)
@@ -313,8 +313,8 @@ class SHAC:
 
         games_cnt = 0
         while games_cnt < num_games:
-            if self.obs_rms is not None:
-                obs = self.obs_rms.normalize(obs)
+            if self.state_obs_rms is not None:
+                obs = self.state_obs_rms.normalize(obs)
 
             actions = self.actor(obs, deterministic = deterministic)
 
@@ -563,14 +563,14 @@ class SHAC:
     def save(self, filename = None):
         if filename is None:
             filename = 'best_policy'
-        torch.save([self.actor, self.critic, self.target_critic, self.obs_rms, self.ret_rms], os.path.join(self.log_dir, "{}.pt".format(filename)))
+        torch.save([self.actor, self.critic, self.target_critic, self.state_obs_rms, self.ret_rms], os.path.join(self.log_dir, "{}.pt".format(filename)))
     
     def load(self, path):
         checkpoint = torch.load(path)
         self.actor = checkpoint[0].to(self.device)
         self.critic = checkpoint[1].to(self.device)
         self.target_critic = checkpoint[2].to(self.device)
-        self.obs_rms = checkpoint[3].to(self.device)
+        self.state_obs_rms = checkpoint[3].to(self.device)
         self.ret_rms = checkpoint[4].to(self.device) if checkpoint[4] is not None else checkpoint[4]
         
     def close(self):
