@@ -210,8 +210,9 @@ class HopperEnv(DFlexEnv):
         self.calculateReward()
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(env_ids) < self.num_envs:
-            self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+        if self.vis_obs:
+            if len(env_ids) < self.num_envs:
+                self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
 
         if self.no_grad == False:
             self.state_obs_buf_before_reset = self.state_obs_buf.clone()

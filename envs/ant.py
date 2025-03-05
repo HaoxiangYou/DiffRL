@@ -28,8 +28,6 @@ class AntEnv(DFlexEnv):
                 vis_obs=False, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
         num_obs = 37
         num_act = 8
-
-        import pdb; pdb.set_trace()
     
         super(AntEnv, self).__init__(num_envs, num_obs, num_act, episode_length, MM_caching_frequency, seed, 
                                     no_grad=no_grad, render=render, device=device, vis_obs=vis_obs, 
@@ -210,8 +208,9 @@ class AntEnv(DFlexEnv):
         self.calculateReward()
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if len(env_ids) < self.num_envs:
-            self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+        if self.vis_obs:
+            if len(env_ids) < self.num_envs:
+                self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
 
         if self.no_grad == False:
             self.state_obs_buf_before_reset = self.state_obs_buf.clone()
