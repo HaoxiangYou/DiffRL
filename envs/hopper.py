@@ -53,7 +53,6 @@ class HopperEnv(DFlexEnv):
         if self.vis_obs:
             self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/hopper.xml"), 
                                     camera_id=0, height=self.obs_img_height, width=self.obs_img_width)
-            self._vis_frames = []
 
         # other parameters
         self.termination_height = -0.45
@@ -65,7 +64,7 @@ class HopperEnv(DFlexEnv):
         self.action_penalty = -1e-1
 
         #-----------------------
-        # set up Usd recorder
+        # set up recorder
         if (self.record):
             # recording using usd
             if self.render_mode == "usd":
@@ -171,19 +170,19 @@ class HopperEnv(DFlexEnv):
                     self.num_frames -= recording_interval
             elif self.render_mode == "dmc":
                 # using the recorder render_kwargs 
-                pixels = self.render(self.recorder.render_kwargs)
                 # only record the first envs
+                pixels = self.render(torch.tensor([0]), self.recorder.render_kwargs)
                 self.recorder.append(pixels[0])
                 if self.reset_buf[0]:
                     self.recorder.save("hopper.mp4")
 
     """
-    This function render imgs for all envs
+    This function render imgs for target envs
     """
-    def render(self, render_kwargs=None):
+    def render(self, env_ids, render_kwargs=None):
         frames = []
         if self.dmc_render:
-            mujoco_joint_qs = self.state.joint_q.view(self.num_envs, -1).clone().detach().cpu().numpy()
+            mujoco_joint_qs = self.state.joint_q.view(self.num_envs, -1)[env_ids].clone().detach().cpu().numpy()
             for mujoco_joint_q in mujoco_joint_qs:
                 frames.append(self.dmc_render.render(mujoco_joint_q, render_kwargs))
             return np.stack(frames)
@@ -207,10 +206,12 @@ class HopperEnv(DFlexEnv):
         self.progress_buf += 1
         self.num_frames += 1
 
-        self.calculateObservations()
+        self.calculateStateObservations()
         self.calculateReward()
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if len(env_ids) < self.num_envs:
+            self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
 
         if self.no_grad == False:
             self.obs_buf_before_reset = self.obs_buf.clone()
@@ -255,7 +256,11 @@ class HopperEnv(DFlexEnv):
 
             self.progress_buf[env_ids] = 0
             
-            self.calculateObservations()
+            self.calculateStateObservations()
+            # three identical images at reset
+            if self.vis_obs:
+                for _ in range(3):
+                    self.calculateVisualObservations(env_ids)
         
         return self.obs_buf
     
@@ -285,7 +290,7 @@ class HopperEnv(DFlexEnv):
     '''
     def initialize_trajectory(self):
         self.clear_grad()
-        self.calculateObservations()
+        self.calculateStateObservations()
 
         return self.obs_buf
 
@@ -298,8 +303,28 @@ class HopperEnv(DFlexEnv):
 
         return checkpoint
 
-    def calculateObservations(self):
+    """
+    This function calculate the low-dimension state related observation such as velocity in world frame
+
+    The resulted obs_buf is fully differentialable c
+    """
+    def calculateStateObservations(self):
         self.obs_buf = torch.cat([self.state.joint_q.view(self.num_envs, -1)[:, 1:], self.state.joint_qd.view(self.num_envs, -1)], dim = -1)
+
+    """
+    This function calculate visual observations for given env_ids
+    
+    Each visual observation is a stack of three images from [t_2, t_1] to current 
+
+    The resulted vis_obs_buf is not differentiable 
+    """
+    @torch.no_grad()
+    def calculateVisualObservations(self, env_ids):
+        # shifting images forword 
+        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
+        # append new images
+        pixels = self.render(env_ids)
+        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
 
     def calculateReward(self):
         height_diff = self.obs_buf[:, 0] - (self.termination_height + self.termination_height_tolerance)

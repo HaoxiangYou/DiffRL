@@ -36,7 +36,7 @@ params:
     truncate_grads: True
     num_actors: 256
     # visual observation related
-    vis_obs: False
+    vis_obs: True
     img_height: 84
     img_width: 84
     save_interval: 400

@@ -59,6 +59,9 @@ class DFlexEnv:
         # allocate buffers
         self.obs_buf = torch.zeros(
             (self.num_envs, self.num_observations), device=self.device, dtype=torch.float, requires_grad=False)
+        # visual observation buffers
+        self.vis_obs_buf = torch.zeros(
+            (num_envs, 9, self.obs_img_height, self.obs_img_width), device=self.device, dtype=torch.uint8, requires_grad=False)
         self.rew_buf = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.float, requires_grad=False)
         self.reset_buf = torch.ones(
