@@ -1,10 +1,10 @@
 params:  
   diff_env:
-    name: CheetahEnv
+    name: AntEnv
     stochastic_env: True
     episode_length: 1000
     MM_caching_frequency: 16
-    
+
   network:
     actor: ActorStochasticMLP # ActorDeterministicMLP
     actor_mlp:
@@ -13,11 +13,11 @@ params:
 
     critic: CriticMLP
     critic_mlp:
-      units: [64, 64] 
+      units: [64, 64]
       activation: elu
 
   config:
-    name: df_cheetah_dva
+    name: df_ant_dva
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 2e-3 # adam
     lr_schedule: linear # ['constant', 'linear']
@@ -33,10 +33,10 @@ params:
     max_epochs: 2000
     steps_num: 32
     grad_norm: 1.0 
-    truncate_grads: True
+    truncate_grads: True 
     num_actors: 64
     # visual observation related
-    vis_obs: True
+    vis_obs: False
     img_height: 84
     img_width: 84
     save_interval: 400
