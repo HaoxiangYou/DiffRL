@@ -190,20 +190,23 @@ class DVA:
 
         # initialize trajectory to cut off gradients between episodes.
         obs = self.env.initialize_trajectory()
+        state_obs = obs["state_obs"]
         if self.state_obs_rms is not None:
-            # update obs rms
+            # update state obs rms
             with torch.no_grad():
-                self.state_obs_rms.update(obs)
+                self.state_obs_rms.update(state_obs)
             # normalize the current obs
-            obs = state_obs_rms.normalize(obs)
+            state_obs = state_obs_rms.normalize(state_obs)
         for i in range(self.steps_num):
             # collect data for critic training
             with torch.no_grad():
-                self.state_obs_buf[i] = obs.clone()
+                self.state_obs_buf[i] = state_obs.clone()
 
             # detach the obs from computation graph
-            action = self.actor(obs.detach(), deterministic = deterministic)
+            action = self.actor(state_obs.detach(), deterministic = deterministic)
             obs, rew, done, extra_info = self.env.step(torch.tanh(action))
+            state_obs = obs["state_obs"]
+
             # actions.append(action)
             
             with torch.no_grad():
@@ -213,11 +216,11 @@ class DVA:
             rew = rew * self.rew_scale
             
             if self.state_obs_rms is not None:
-                # update obs rms
+                # update state obs rms
                 with torch.no_grad():
-                    self.state_obs_rms.update(obs)
-                # normalize the current obs
-                obs = state_obs_rms.normalize(obs)
+                    self.state_obs_rms.update(state_obs)
+                # normalize the current state obs
+                state_obs = state_obs_rms.normalize(state_obs)
 
             if self.ret_rms is not None:
                 # update ret rms
@@ -231,21 +234,21 @@ class DVA:
         
             done_env_ids = done.nonzero(as_tuple = False).squeeze(-1)
 
-            next_values[i + 1] = self.target_critic(obs).squeeze(-1)
+            next_values[i + 1] = self.target_critic(state_obs).squeeze(-1)
 
             for id in done_env_ids:
-                if torch.isnan(extra_info['obs_before_reset'][id]).sum() > 0 \
-                    or torch.isinf(extra_info['obs_before_reset'][id]).sum() > 0 \
-                    or (torch.abs(extra_info['obs_before_reset'][id]) > 1e6).sum() > 0: # ugly fix for nan values
+                if torch.isnan(extra_info['state_obs_before_reset'][id]).sum() > 0 \
+                    or torch.isinf(extra_info['state_obs_before_reset'][id]).sum() > 0 \
+                    or (torch.abs(extra_info['state_obs_before_reset'][id]) > 1e6).sum() > 0: # ugly fix for nan values
                     next_values[i + 1, id] = 0.
                 elif self.episode_length[id] < self.max_episode_length: # early termination
                     next_values[i + 1, id] = 0.
                 else: # otherwise, use terminal value critic to estimate the long-term performance
                     if self.state_obs_rms is not None:
-                        real_obs = state_obs_rms.normalize(extra_info['obs_before_reset'][id])
+                        real_state_obs = state_obs_rms.normalize(extra_info['state_obs_before_reset'][id])
                     else:
-                        real_obs = extra_info['obs_before_reset'][id]
-                    next_values[i + 1, id] = self.target_critic(real_obs).squeeze(-1)
+                        real_state_obs = extra_info['state_obs_before_reset'][id]
+                    next_values[i + 1, id] = self.target_critic(real_state_obs).squeeze(-1)
             
             if (next_values[i + 1] > 1e6).sum() > 0 or (next_values[i + 1] < -1e6).sum() > 0:
                 print('next value error')
@@ -329,6 +332,8 @@ class DVA:
             joint_qds = []
 
         obs = self.env.reset()
+        state_obs = obs["state_obs"]
+
         if stored_traj:
             joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().cpu().numpy())
             joint_qds.append(self.env.state.joint_qd.view(self.num_envs, -1).detach().cpu().numpy())
@@ -336,11 +341,13 @@ class DVA:
         games_cnt = 0
         while games_cnt < num_games:
             if self.state_obs_rms is not None:
-                obs = self.state_obs_rms.normalize(obs)
+                state_obs = self.state_obs_rms.normalize(state_obs)
 
-            actions = self.actor(obs, deterministic = deterministic)
+            action = self.actor(state_obs, deterministic = deterministic)
 
-            obs, rew, done, _ = self.env.step(torch.tanh(actions))
+            obs, rew, done, _ = self.env.step(torch.tanh(action))
+            state_obs = obs["state_obs"]
+
             if stored_traj:
                 joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().cpu().numpy())
                 joint_qds.append(self.env.state.joint_qd.view(self.num_envs, -1).detach().cpu().numpy())

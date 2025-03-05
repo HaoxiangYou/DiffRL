@@ -143,18 +143,19 @@ class BPTT:
                 state_obs_rms = copy.deepcopy(self.state_obs_rms)
 
         obs = self.env.initialize_trajectory()
-        
+        state_obs = obs["state_obs"]
         if self.state_obs_rms is not None:
             # update obs rms
             with torch.no_grad():
-                self.state_obs_rms.update(obs)
+                self.state_obs_rms.update(state_obs)
             # normalize the current obs
-            obs = state_obs_rms.normalize(obs)
+            state_obs = state_obs_rms.normalize(state_obs)
 
         for i in range(self.steps_num):
-            actions = self.actor(obs, deterministic = deterministic)
+            actions = self.actor(state_obs, deterministic = deterministic)
 
             obs, rew, done, extra_info = self.env.step(torch.tanh(actions))
+            state_obs = obs["state_obs"]
             
             with torch.no_grad():
                 raw_rew = rew.clone()
@@ -163,11 +164,11 @@ class BPTT:
             rew = rew * self.rew_scale
             
             if self.state_obs_rms is not None:
-                # update obs rms
+                # update state obs rms
                 with torch.no_grad():
-                    self.state_obs_rms.update(obs)
+                    self.state_obs_rms.update(state_obs)
                 # normalize the current obs
-                obs = state_obs_rms.normalize(obs)
+                state_obs = state_obs_rms.normalize(state_obs)
 
             self.episode_length += 1
 
@@ -230,15 +231,17 @@ class BPTT:
         episode_discounted_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
 
         obs = self.env.reset()
+        state_obs = obs["state_obs"]
 
         games_cnt = 0
         while games_cnt < num_games:
             if self.state_obs_rms is not None:
-                obs = self.state_obs_rms.normalize(obs)
+                state_obs = self.state_obs_rms.normalize(state_obs)
 
-            actions = self.actor(obs, deterministic = deterministic)
+            actions = self.actor(state_obs, deterministic = deterministic)
 
             obs, rew, done, _ = self.env.step(torch.tanh(actions))
+            state_obs = obs["state_obs"]
 
             episode_length += 1
 
