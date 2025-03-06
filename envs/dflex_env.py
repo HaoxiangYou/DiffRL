@@ -20,7 +20,7 @@ from gym import spaces
 
 class DFlexEnv:
     
-    def __init__(self, num_envs, num_obs, num_act, episode_length, MM_caching_frequency = 1, seed=0, no_grad=True, render=False, device='cuda:0', 
+    def __init__(self, num_envs, state_num_obs, num_act, episode_length, MM_caching_frequency = 1, seed=0, no_grad=True, render=False, device='cuda:0', 
                 vis_obs=False, img_height=84, img_width=84, render_mode="usd"):
         self.seed = seed
 
@@ -50,15 +50,15 @@ class DFlexEnv:
         self.MM_caching_frequency = MM_caching_frequency
         
         # initialize observation and action space
-        self.num_observations = num_obs
+        self.state_num_observations = state_num_obs
         self.num_actions = num_act
 
-        self.obs_space = spaces.Box(np.ones(self.num_observations) * -np.Inf, np.ones(self.num_observations) * np.Inf)
+        self.state_obs_space = spaces.Box(np.ones(self.state_num_observations) * -np.Inf, np.ones(self.state_num_observations) * np.Inf)
         self.act_space = spaces.Box(np.ones(self.num_actions) * -1., np.ones(self.num_actions) * 1.)
 
         # allocate buffers
         self.state_obs_buf = torch.zeros(
-            (self.num_envs, self.num_observations), device=self.device, dtype=torch.float, requires_grad=False)
+            (self.num_envs, self.state_num_observations), device=self.device, dtype=torch.float, requires_grad=False)
         # visual observation buffers
         self.vis_obs_buf = torch.zeros(
             (num_envs, 9, self.obs_img_height, self.obs_img_width), device=self.device, dtype=torch.uint8, requires_grad=False)
@@ -80,8 +80,8 @@ class DFlexEnv:
         return self.num_agents
 
     @property
-    def observation_space(self):
-        return self.obs_space
+    def state_observation_space(self):
+        return self.state_obs_space
 
     @property
     def action_space(self):
@@ -96,8 +96,15 @@ class DFlexEnv:
         return self.num_actions
 
     @property
-    def num_obs(self):
-        return self.num_observations
+    def num_state_obs(self):
+        return self.state_num_observations
+    
+    @property
+    def num_vis_obs(self):
+        if self.vis_obs:
+            return (9, self.obs_img_height, self.obs_img_width)
+        else:
+            return None 
 
     def get_state(self):
         return self.state.joint_q.clone(), self.state.joint_qd.clone()

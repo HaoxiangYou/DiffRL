@@ -48,10 +48,11 @@ class SHAC:
 
         print('num_envs = ', self.env.num_envs)
         print('num_actions = ', self.env.num_actions)
-        print('num_obs = ', self.env.num_obs)
+        print('num_state_obs = ', self.env.num_state_obs)
+        print('num_vis_obs =', self.env.num_vis_obs)
 
         self.num_envs = self.env.num_envs
-        self.num_obs = self.env.num_obs
+        self.num_state_obs = self.env.num_state_obs
         self.num_actions = self.env.num_actions
         self.max_episode_length = self.env.episode_length
         self.device = cfg["params"]["general"]["device"]
@@ -72,7 +73,7 @@ class SHAC:
 
         self.state_obs_rms = None
         if cfg['params']['config'].get('state_obs_rms', False):
-            self.state_obs_rms = RunningMeanStd(shape = (self.num_obs), device = self.device)
+            self.state_obs_rms = RunningMeanStd(shape = (self.num_state_obs), device = self.device)
             
         self.ret_rms = None
         if cfg['params']['config'].get('ret_rms', False):
@@ -115,9 +116,9 @@ class SHAC:
         self.actor_name = cfg["params"]["network"].get("actor", 'ActorStochasticMLP') # choices: ['ActorDeterministicMLP', 'ActorStochasticMLP']
         self.critic_name = cfg["params"]["network"].get("critic", 'CriticMLP')
         actor_fn = getattr(models.actor, self.actor_name)
-        self.actor = actor_fn(self.num_obs, self.num_actions, cfg['params']['network'], device = self.device)
+        self.actor = actor_fn(self.num_state_obs, self.num_actions, cfg['params']['network'], device = self.device)
         critic_fn = getattr(models.critic, self.critic_name)
-        self.critic = critic_fn(self.num_obs, cfg['params']['network'], device = self.device)
+        self.critic = critic_fn(self.num_state_obs, cfg['params']['network'], device = self.device)
         self.all_params = list(self.actor.parameters()) + list(self.critic.parameters())
         self.target_critic = copy.deepcopy(self.critic)
     
@@ -129,7 +130,7 @@ class SHAC:
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), betas = cfg['params']['config']['betas'], lr = self.critic_lr)
 
         # replay buffer
-        self.state_obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_obs), dtype = torch.float32, device = self.device)
+        self.state_obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_state_obs), dtype = torch.float32, device = self.device)
         self.rew_buf = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.done_mask = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.next_values = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)

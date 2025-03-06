@@ -33,10 +33,10 @@ class HumanoidEnv(DFlexEnv):
 
     def __init__(self, render=False, render_mode="usd", device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84,
                 vis_obs=False, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
-        num_obs = 76
+        num_state_obs = 76
         num_act = 21
 
-        super(HumanoidEnv, self).__init__(num_envs, num_obs, num_act, episode_length, MM_caching_frequency, seed, 
+        super(HumanoidEnv, self).__init__(num_envs, num_state_obs, num_act, episode_length, MM_caching_frequency, seed, 
                                     no_grad=no_grad, render=render, device=device, vis_obs=vis_obs, 
                                     img_height=img_height, img_width=img_width, render_mode=render_mode)
 
