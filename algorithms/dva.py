@@ -70,6 +70,8 @@ class DVA:
             self.lam = cfg['params']['config'].get('lambda', 0.95)
 
         self.steps_num = cfg["params"]["config"]["steps_num"]
+        self.vis_obs = cfg["params"]["config"].get("vis_obs", False)
+        self.img_aug = cfg["params"]["config"].get("img_aug", False)
         self.max_epochs = cfg["params"]["config"]["max_epochs"]
         self.actor_lr = float(cfg["params"]["config"]["actor_learning_rate"])
         self.critic_lr = float(cfg['params']['config']['critic_learning_rate'])
@@ -192,6 +194,8 @@ class DVA:
         # initialize trajectory to cut off gradients between episodes.
         obs = self.env.initialize_trajectory()
         state_obs = obs["state_obs"]
+        if self.vis_obs:
+            vis_obs = obs["vis_obs"]
         if self.state_obs_rms is not None:
             # update state obs rms
             with torch.no_grad():
@@ -204,9 +208,15 @@ class DVA:
                 self.state_obs_buf[i] = state_obs.clone()
 
             # detach the obs from computation graph
-            action = self.actor(state_obs.detach(), deterministic = deterministic)
+            if self.vis_obs:
+                action = self.actor(vis_obs.detach().clone(), deterministic=deterministic, img_aug=self.img_aug)
+            else:
+                action = self.actor(state_obs.detach(), deterministic = deterministic)
+            
             obs, rew, done, extra_info = self.env.step(torch.tanh(action))
             state_obs = obs["state_obs"]
+            if self.vis_obs:
+                vis_obs = obs["vis_obs"]
 
             # actions.append(action)
             
@@ -334,6 +344,8 @@ class DVA:
 
         obs = self.env.reset()
         state_obs = obs["state_obs"]
+        if self.vis_obs:
+            vis_obs = obs["vis_obs"]
 
         if stored_traj:
             joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().cpu().numpy())
@@ -344,10 +356,15 @@ class DVA:
             if self.state_obs_rms is not None:
                 state_obs = self.state_obs_rms.normalize(state_obs)
 
-            action = self.actor(state_obs, deterministic = deterministic)
+            if self.vis_obs:
+                action = self.actor(vis_obs, deterministic = deterministic)
+            else:
+                action = self.actor(state_obs, deterministic = deterministic)
 
             obs, rew, done, _ = self.env.step(torch.tanh(action))
             state_obs = obs["state_obs"]
+            if self.vis_obs:
+                vis_obs = obs["vis_obs"]
 
             if stored_traj:
                 joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().cpu().numpy())

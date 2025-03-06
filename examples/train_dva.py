@@ -87,6 +87,12 @@ if __name__ == '__main__':
     if args.play or args.test:
         cfg_train["params"]["config"]["num_actors"] = cfg_train["params"]["config"].get("player", {}).get("num_actors", 1)
 
+    # copy the visual observation related setting from config to newtwork
+    cfg_train["params"]["network"]["vis_obs"] = cfg_train["params"]["config"].get("vis_obs", False)
+    cfg_train["params"]["network"]["img_height"] = cfg_train["params"]["config"].get("img_height", 84)
+    cfg_train["params"]["network"]["img_width"] = cfg_train["params"]["config"].get("img_width", 84)
+    cfg_train["params"]["network"]["img_aug_padding"] = cfg_train["params"]["config"].get("img_aug_padding", 4)
+
     if not args.no_time_stamp:
         args.logdir = os.path.join(args.logdir, get_time_stamp())
     
