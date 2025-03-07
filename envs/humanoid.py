@@ -331,7 +331,7 @@ class HumanoidEnv(DFlexEnv):
         if self.vis_obs:
             obs["vis_obs"] = self.vis_obs_buf
 
-        return self.state_obs_buf
+        return obs
     
     '''
     cut off the gradient from the current state to previous states
