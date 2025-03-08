@@ -182,7 +182,7 @@ class HopperEnv(DFlexEnv):
     def render(self, env_ids, render_kwargs=None):
         frames = []
         if self.dmc_render:
-            mujoco_joint_qs = self.state.joint_q.view(self.num_envs, -1)[env_ids].clone().detach().cpu().numpy()
+            mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1)[env_ids]).detach().cpu().numpy()
             for mujoco_joint_q in mujoco_joint_qs:
                 frames.append(self.dmc_render.render(mujoco_joint_q, render_kwargs))
             return np.stack(frames)
@@ -277,6 +277,13 @@ class HopperEnv(DFlexEnv):
 
         return obs
     
+    '''
+    This function returns joint_q in mujoco conventions
+    '''
+    def get_mujoco_joint_q(self, dflex_q:torch.Tensor):
+        mujoco_q = dflex_q.clone()
+        return mujoco_q
+
     '''
     cut off the gradient from the current state to previous states
     '''
