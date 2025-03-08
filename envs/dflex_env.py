@@ -36,7 +36,7 @@ class DFlexEnv:
         self.sim_time = 0.0
 
         # visual obs related variables
-        self.vis_obs = vis_obs
+        self.enable_vis_obs = vis_obs
         self.obs_img_height = img_height
         self.obs_img_width = img_width
 
@@ -60,7 +60,7 @@ class DFlexEnv:
         self.state_obs_buf = torch.zeros(
             (self.num_envs, self.state_num_observations), device=self.device, dtype=torch.float, requires_grad=False)
         # visual observation buffers
-        self.vis_obs_buf = torch.zeros(
+        self.enable_vis_obs_buf = torch.zeros(
             (num_envs, 9, self.obs_img_height, self.obs_img_width), device=self.device, dtype=torch.uint8, requires_grad=False)
         self.rew_buf = torch.zeros(
             self.num_envs, device=self.device, dtype=torch.float, requires_grad=False)
@@ -101,7 +101,7 @@ class DFlexEnv:
     
     @property
     def num_vis_obs(self):
-        if self.vis_obs:
+        if self.enable_vis_obs:
             return (9, self.obs_img_height, self.obs_img_width)
         else:
             return None 

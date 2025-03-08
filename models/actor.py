@@ -21,8 +21,8 @@ class ActorDeterministicMLP(nn.Module):
 
         self.device = device
 
-        self.vis_obs = cfg_network.get("vis_obs", False)
-        if self.vis_obs:
+        self.enable_vis_obs = cfg_network.get("vis_obs", False)
+        if self.enable_vis_obs:
             vis_obs_dim = (9, cfg_network['img_height'], cfg_network['img_width'])
             self.encoder = Encoder(obs_shape=vis_obs_dim,
                                    output_dim=cfg_network["actor_mlp"]['units'][0])
@@ -45,7 +45,7 @@ class ActorDeterministicMLP(nn.Module):
         
         self.action_dim = action_dim
 
-        if self.vis_obs:
+        if self.enable_vis_obs:
             self.obs_dim = vis_obs_dim
         else:
             self.obs_dim = state_obs_dim
@@ -57,7 +57,7 @@ class ActorDeterministicMLP(nn.Module):
         return None
 
     def forward(self, observations, deterministic = False, img_aug=False):
-        if self.vis_obs:
+        if self.enable_vis_obs:
             if img_aug:
                 observations = self.aug(observations)
             observations = self.encoder(observations)
@@ -71,8 +71,8 @@ class ActorStochasticMLP(nn.Module):
 
         self.device = device
 
-        self.vis_obs = cfg_network.get("vis_obs", False)
-        if self.vis_obs:
+        self.enable_vis_obs = cfg_network.get("vis_obs", False)
+        if self.enable_vis_obs:
             vis_obs_dim = (9, cfg_network['img_height'], cfg_network['img_width'])
             self.encoder = Encoder(obs_shape=vis_obs_dim,
                                    output_dim=cfg_network["actor_mlp"]['units'][0])
@@ -98,7 +98,7 @@ class ActorStochasticMLP(nn.Module):
 
         self.action_dim = action_dim
 
-        if self.vis_obs:
+        if self.enable_vis_obs:
             self.obs_dim = vis_obs_dim
         else:
             self.obs_dim = state_obs_dim
@@ -111,7 +111,7 @@ class ActorStochasticMLP(nn.Module):
 
     def forward(self, obs, deterministic = False, img_aug=False):
 
-        if self.vis_obs:
+        if self.enable_vis_obs:
             if img_aug:
                 obs = self.aug(obs)
             obs = self.encoder(obs)
@@ -130,7 +130,7 @@ class ActorStochasticMLP(nn.Module):
     
     def forward_with_dist(self, obs, deterministic = False, img_aug=False):
 
-        if self.vis_obs:
+        if self.enable_vis_obs:
             if img_aug:
                 obs = self.aug(obs)
             obs = self.encoder(obs)
@@ -147,7 +147,7 @@ class ActorStochasticMLP(nn.Module):
         
     def evaluate_actions_log_probs(self, obs, actions, img_aug=False):
 
-        if self.vis_obs:
+        if self.enable_vis_obs:
             if img_aug:
                 obs = self.aug(obs)
             obs = self.encoder(obs)

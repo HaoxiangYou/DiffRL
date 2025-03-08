@@ -50,7 +50,7 @@ class HopperEnv(DFlexEnv):
 
                 # whether output images as observation
         self.dmc_render = None
-        if self.vis_obs:
+        if self.enable_vis_obs:
             self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/hopper.xml"), 
                                     camera_id=0, height=self.obs_img_height, width=self.obs_img_width)
 
@@ -210,7 +210,7 @@ class HopperEnv(DFlexEnv):
         self.calculateReward()
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if self.vis_obs:
+        if self.enable_vis_obs:
             if len(env_ids) < self.num_envs:
                 self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
 
@@ -220,9 +220,9 @@ class HopperEnv(DFlexEnv):
                 'state_obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
-            if self.vis_obs:
-                self.vis_obs_buf_before_reset = self.vis_obs_buf.clone()
-                self.extras["vis_obs_before_reset"] = self.vis_obs_buf_before_reset
+            if self.enable_vis_obs:
+                self.enable_vis_obs_buf_before_reset = self.enable_vis_obs_buf.clone()
+                self.extras["vis_obs_before_reset"] = self.enable_vis_obs_buf_before_reset
 
         if len(env_ids) > 0:
            self.reset(env_ids)
@@ -230,8 +230,8 @@ class HopperEnv(DFlexEnv):
         self.recording()
 
         obs = {"state_obs": self.state_obs_buf}
-        if self.vis_obs:
-            obs["vis_obs"] = self.vis_obs_buf
+        if self.enable_vis_obs:
+            obs["vis_obs"] = self.enable_vis_obs_buf
 
         return obs, self.rew_buf, self.reset_buf, self.extras
     
@@ -266,13 +266,13 @@ class HopperEnv(DFlexEnv):
             
             self.calculateStateObservations()
             # three identical images at reset
-            if self.vis_obs:
+            if self.enable_vis_obs:
                 for _ in range(3):
                     self.calculateVisualObservations(env_ids)
             
         obs = {"state_obs": self.state_obs_buf}
-        if self.vis_obs:
-            obs["vis_obs"] = self.vis_obs_buf
+        if self.enable_vis_obs:
+            obs["vis_obs"] = self.enable_vis_obs_buf
 
         return obs
     
@@ -305,8 +305,8 @@ class HopperEnv(DFlexEnv):
         self.calculateStateObservations()
         obs = {"state_obs": self.state_obs_buf}
         # visual obs already don't have gradient
-        if self.vis_obs:
-            obs["vis_obs"] = self.vis_obs_buf
+        if self.enable_vis_obs:
+            obs["vis_obs"] = self.enable_vis_obs_buf
 
         return obs
 
@@ -337,10 +337,10 @@ class HopperEnv(DFlexEnv):
     @torch.no_grad()
     def calculateVisualObservations(self, env_ids):
         # shifting images forword 
-        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
+        self.enable_vis_obs_buf[env_ids, :6, :, :] = self.enable_vis_obs_buf[env_ids, 3:, :, :]
         # append new images
         pixels = self.render(env_ids)
-        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
+        self.enable_vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
 
     def calculateReward(self):
         height_diff = self.state_obs_buf[:, 0] - (self.termination_height + self.termination_height_tolerance)
