@@ -265,10 +265,11 @@ class AntEnv(DFlexEnv):
             self.progress_buf[env_ids] = 0
 
             self.calculateStateObservations()
-            # three identical images at reset
             if self.enable_vis_obs:
-                for _ in range(3):
-                    self.calculateVisualObservations(env_ids)
+                pixels = self.render(env_ids)
+                # three identical images at reset
+                pixels = torch.tile(torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device), (1, 3, 1, 1))
+                self.enable_vis_obs_buf[env_ids] = pixels
             
         obs = {"state_obs": self.state_obs_buf}
         if self.enable_vis_obs:
