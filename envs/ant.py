@@ -219,8 +219,8 @@ class AntEnv(DFlexEnv):
                 'episode_end': self.termination_buf
                 }
             if self.enable_vis_obs:
-                self.enable_vis_obs_buf_before_reset = self.enable_vis_obs_buf.clone()
-                self.extras["vis_obs_before_reset"] = self.enable_vis_obs_buf_before_reset
+                self.vis_obs_buf_before_reset = self.vis_obs_buf.clone()
+                self.extras["vis_obs_before_reset"] = self.vis_obs_buf_before_reset
 
         if len(env_ids) > 0:
            self.reset(env_ids)
@@ -229,7 +229,7 @@ class AntEnv(DFlexEnv):
 
         obs = {"state_obs": self.state_obs_buf}
         if self.enable_vis_obs:
-            obs["vis_obs"] = self.enable_vis_obs_buf
+            obs["vis_obs"] = self.vis_obs_buf
 
         return obs, self.rew_buf, self.reset_buf, self.extras
     
@@ -269,11 +269,11 @@ class AntEnv(DFlexEnv):
                 pixels = self.render(env_ids)
                 # three identical images at reset
                 pixels = torch.tile(torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device), (1, 3, 1, 1))
-                self.enable_vis_obs_buf[env_ids] = pixels
+                self.vis_obs_buf[env_ids] = pixels
             
         obs = {"state_obs": self.state_obs_buf}
         if self.enable_vis_obs:
-            obs["vis_obs"] = self.enable_vis_obs_buf
+            obs["vis_obs"] = self.vis_obs_buf
 
         return obs
     
@@ -328,7 +328,7 @@ class AntEnv(DFlexEnv):
         obs = {"state_obs": self.state_obs_buf}
         # visual obs already don't have gradient
         if self.enable_vis_obs:
-            obs["vis_obs"] = self.enable_vis_obs_buf
+            obs["vis_obs"] = self.vis_obs_buf
 
         return obs
 
@@ -384,10 +384,10 @@ class AntEnv(DFlexEnv):
     @torch.no_grad()
     def calculateVisualObservations(self, env_ids):
         # shifting images forword 
-        self.enable_vis_obs_buf[env_ids, :6, :, :] = self.enable_vis_obs_buf[env_ids, 3:, :, :]
+        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
         # append new images
         pixels = self.render(env_ids)
-        self.enable_vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
+        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
 
     def calculateReward(self):
         up_reward = 0.1 * self.state_obs_buf[:, 27]
