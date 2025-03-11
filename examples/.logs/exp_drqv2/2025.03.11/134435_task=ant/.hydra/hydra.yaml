@@ -117,10 +117,10 @@ hydra:
   overrides:
     hydra: []
     task:
-    - task=quadruped_walk
+    - task=ant
   job:
     name: train_drqv2
-    override_dirname: task=quadruped_walk
+    override_dirname: task=ant
     id: ???
     num: ???
     config_name: config
@@ -145,7 +145,7 @@ hydra:
       schema: structured
       provider: schema
     choices:
-      task: quadruped_walk
+      task: ant
       hydra/env: default
       hydra/callbacks: null
       hydra/job_logging: default

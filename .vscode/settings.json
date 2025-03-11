@@ -1,5 +1,6 @@
 {
     "python.analysis.extraPaths": [
-        "./externals/drqv"
+        "./externals/drqv",
+        "./externals/drqv2"
     ]
 }

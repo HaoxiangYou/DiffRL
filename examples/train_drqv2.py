@@ -16,7 +16,8 @@ import numpy as np
 import torch
 
 import sys
-sys.path.append('../externals/drqv')
+sys.path.append('../externals/drqv2')
+
 import dmc
 from dm_env import specs
 
@@ -55,6 +56,7 @@ class Workspace:
         # create logger
         self.logger = Logger(self.work_dir, use_tb=self.cfg.use_tb)
         # create envs
+
         self.train_env = dmc.make(self.cfg.task_name, self.cfg.frame_stack,
                                   self.cfg.action_repeat, self.cfg.seed)
         self.eval_env = dmc.make(self.cfg.task_name, self.cfg.frame_stack,
