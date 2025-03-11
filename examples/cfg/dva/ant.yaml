@@ -15,7 +15,7 @@ params:
     critic_mlp:
       units: [64, 64]
       activation: elu
-
+    
   config:
     name: df_ant_dva
     actor_learning_rate: 2e-3 # adam

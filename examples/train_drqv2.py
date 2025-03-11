@@ -9,31 +9,89 @@ import os
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 os.environ['MUJOCO_GL'] = 'egl'
 
+import sys
+project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_dir)
+
 from pathlib import Path
 
 import hydra
 import numpy as np
 import torch
 
-import sys
-sys.path.append('../externals/drqv2')
-
-import dmc
+import dm_env
 from dm_env import specs
-
-import utils
-from logger import Logger
-from replay_buffer import ReplayBufferStorage, make_replay_loader
-from video import TrainVideoRecorder, VideoRecorder
+import envs
+from externals.drqv2 import utils
+from externals.drqv2 import dmc
+from externals.drqv2.logger import Logger
+from externals.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
+from externals.drqv2.video import TrainVideoRecorder, VideoRecorder
+from utils.common import *
 
 torch.backends.cudnn.benchmark = True
-
 
 def make_agent(obs_spec, action_spec, cfg):
     cfg.obs_shape = obs_spec.shape
     cfg.action_shape = action_spec.shape
     return hydra.utils.instantiate(cfg)
 
+class MakeDMfromShac(dm_env.Environment):
+    def __init__(self, cfg):
+        env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
+        seeding(cfg["params"]["general"]["seed"])
+        self.env =  env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
+                            device = cfg["params"]["general"]["device"], \
+                            render = cfg["params"]["general"]["render"], \
+                            vis_obs = cfg["params"]["config"].get("vis_obs", False), \
+                            img_height = cfg["params"]["config"].get("img_height", 84),\
+                            img_width = cfg["params"]["config"].get("img_width", 84),\
+                            render_mode = cfg["params"]["config"]["player"].get("render_mode", 'usd') , \
+                            seed = cfg["params"]["general"]["seed"], \
+                            episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
+                            stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
+                            MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
+                            no_grad = False)
+        print('num_envs = ', self.env.num_envs)
+        print('num_actions = ', self.env.num_actions)
+        print('num_state_obs = ', self.env.num_state_obs)
+        print('num_vis_obs =', self.env.observation_space)
+        
+        if hasattr(self._env, 'observation_spec'):
+            self._observation_spec = self._env.observation_spec()
+        else:
+            obs_high = np.inf * np.ones(self.env.num_vis_obs, dtype='float32')
+            self._observation_spec = specs.BoundedArray((self.env.num_vis_obs,),
+                                                        minimum= -obs_high,
+                                                        maximum= obs_high,
+                                                        dtype='float32',
+                                                        name='observation')
+        if hasattr(self._env, 'action_spec'):
+            self._action_spec = self._env.action_spec()
+        else:
+            self._action_spec = specs.BoundedArray((self.env.num_actions,),
+                                                   minimum=-1,
+                                                   maximum=1,
+                                                   dtype='float32',
+                                                   name='action')
+        self._reward_spec = specs.Array(shape=(), dtype=np.dtype('float32'), name='reward')
+        self._discount_spec = specs.BoundedArray(
+        shape=(), dtype='float32', minimum=0.0, maximum=1.0, name='discount')
+        if hasattr(self._env, 'discount_spec'):
+            self._discount_spec = self._env.discount_spec()
+
+    def reset(self):
+        
+        return
+    
+    def step(self, actions):
+        return
+    def observation_spec(self):
+        return
+    def reward_spec(self):
+        return
+    def action_spec(self):
+        return
 
 class Workspace:
     def __init__(self, cfg):
@@ -56,11 +114,11 @@ class Workspace:
         # create logger
         self.logger = Logger(self.work_dir, use_tb=self.cfg.use_tb)
         # create envs
-
-        self.train_env = dmc.make(self.cfg.task_name, self.cfg.frame_stack,
-                                  self.cfg.action_repeat, self.cfg.seed)
-        self.eval_env = dmc.make(self.cfg.task_name, self.cfg.frame_stack,
-                                 self.cfg.action_repeat, self.cfg.seed)
+        # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
+        env = MakeDMfromShac(self.cfg)
+        import pdb; pdb.set_trace()
+        self.train_env = dmc.make_from_shac(self.cfg)
+        self.eval_env = dmc.make_from_shac(self.cfg)
         # create replay buffer
         data_specs = (self.train_env.observation_spec(),
                       self.train_env.action_spec(),
@@ -211,9 +269,8 @@ class Workspace:
 
 @hydra.main(config_path='cfg/drqv2', config_name='config')
 def main(cfg):
-    from train import Workspace as W
     root_dir = Path.cwd()
-    workspace = W(cfg)
+    workspace = Workspace(cfg)
     snapshot = root_dir / 'snapshot.pt'
     if snapshot.exists():
         print(f'resuming: {snapshot}')

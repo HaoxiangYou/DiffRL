@@ -11,7 +11,6 @@ from dm_control import manipulation, suite
 from dm_control.suite.wrappers import action_scale, pixels
 from dm_env import StepType, specs
 
-
 class ExtendedTimeStep(NamedTuple):
     step_type: Any
     reward: Any
@@ -119,6 +118,8 @@ class FrameStackWrapper(dm_env.Environment):
 
     def __getattr__(self, name):
         return getattr(self._env, name)
+    
+    
 
 
 class ActionDTypeWrapper(dm_env.Environment):
@@ -179,7 +180,6 @@ class ExtendedTimeStepWrapper(dm_env.Environment):
     def __getattr__(self, name):
         return getattr(self._env, name)
 
-
 def make(name, frame_stack, action_repeat, seed):
     domain, task = name.split('_', 1)
     # overwrite cup to ball_in_cup
@@ -212,7 +212,10 @@ def make(name, frame_stack, action_repeat, seed):
     env = ExtendedTimeStepWrapper(env)
     return env
 
-def make_from_shac(env, frame_stack, action_repeat, seed):
+def make_from_shac(env, cfg):
+    frame_stack = cfg.frame_stack 
+    action_repeat = cfg.action_repeat 
+    seed = cfg.seed 
     env = ActionDTypeWrapper(env, np.float32)
     env = ActionRepeatWrapper(env, action_repeat)
     env = action_scale.Wrapper(env, minimum=-1.0, maximum=+1.0)
