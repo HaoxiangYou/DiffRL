@@ -55,18 +55,18 @@ class MakeDMfromShac(dm_env.Environment):
         print('num_envs = ', self.env.num_envs)
         print('num_actions = ', self.env.num_actions)
         print('num_state_obs = ', self.env.num_state_obs)
-        print('num_vis_obs =', self.env.observation_space)
+        print('num_vis_obs =', self.env.num_vis_obs)
         
-        if hasattr(self._env, 'observation_spec'):
+        if hasattr(self.env, 'observation_spec'):
             self._observation_spec = self._env.observation_spec()
         else:
             obs_high = np.inf * np.ones(self.env.num_vis_obs, dtype='float32')
-            self._observation_spec = specs.BoundedArray((self.env.num_vis_obs,),
+            self._observation_spec = specs.BoundedArray(self.env.num_vis_obs,
                                                         minimum= -obs_high,
                                                         maximum= obs_high,
                                                         dtype='float32',
                                                         name='observation')
-        if hasattr(self._env, 'action_spec'):
+        if hasattr(self.env, 'action_spec'):
             self._action_spec = self._env.action_spec()
         else:
             self._action_spec = specs.BoundedArray((self.env.num_actions,),
@@ -77,19 +77,25 @@ class MakeDMfromShac(dm_env.Environment):
         self._reward_spec = specs.Array(shape=(), dtype=np.dtype('float32'), name='reward')
         self._discount_spec = specs.BoundedArray(
         shape=(), dtype='float32', minimum=0.0, maximum=1.0, name='discount')
-        if hasattr(self._env, 'discount_spec'):
-            self._discount_spec = self._env.discount_spec()
+        if hasattr(self.env, 'discount_spec'):
+            self._discount_spec = self.env.discount_spec()
 
     def reset(self):
-        
+        # return stacked observation (9 * width * height)
+        self.env.clear_grad()
+        return self.env.reset()
+    
+    def step(self, action):
+        obs, rew, done, extra_info = self.env.step(torch.tanh(action))
+        return 
+    
+    def observation_spec(self):
+
         return
     
-    def step(self, actions):
-        return
-    def observation_spec(self):
-        return
     def reward_spec(self):
         return
+    
     def action_spec(self):
         return
 
