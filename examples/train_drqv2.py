@@ -83,21 +83,33 @@ class MakeDMfromShac(dm_env.Environment):
     def reset(self):
         # return stacked observation (9 * width * height)
         self.env.clear_grad()
-        return self.env.reset()
+        obs = self.env.reset()
+        vis_obs = torch.squeeze(obs["vis_obs"])
+        return dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
+                               reward=None,
+                               discount=1.0,
+                               observation=vis_obs)
     
     def step(self, action):
         obs, rew, done, extra_info = self.env.step(torch.tanh(action))
-        return 
+        del extra_info
+        vis_obs = torch.squeeze(obs["vis_obs"])
+        return dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
+                               reward=rew,
+                               discount=1.0,
+                               observation=vis_obs)
     
     def observation_spec(self):
-
-        return
+        return self._observation_spec
     
     def reward_spec(self):
-        return
+        return self._reward_spec
     
     def action_spec(self):
-        return
+        return self._action_spec
+    
+    def discount_spec(self):
+        return self._discount_spec
 
 class Workspace:
     def __init__(self, cfg):
