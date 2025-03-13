@@ -57,6 +57,9 @@ class MakeDMfromShac(dm_env.Environment):
         print('num_actions = ', self.env.num_actions)
         print('num_state_obs = ', self.env.num_state_obs)
         print('num_vis_obs =', self.env.num_vis_obs)
+        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
+        self.camera_id = 0 # render camera id. 
+        self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
         
         if hasattr(self.env, 'observation_spec'):
             self._observation_spec = self._env.observation_spec()
@@ -113,7 +116,7 @@ class MakeDMfromShac(dm_env.Environment):
     
     def render(self):
         mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
-        frame = self.env.dmc_render.render(mujoco_joint_q, None)
+        frame = self.env.dmc_render.render(mujoco_joint_q, self.render_kwargs)
         return frame # since we only have one env, so the envid is 0
 
 class Workspace:
@@ -200,7 +203,7 @@ class Workspace:
                 self.video_recorder.record(self.eval_env)
                 total_reward += time_step.reward
                 step += 1
-
+                import pdb; pdb.set_trace()
             episode += 1
             self.video_recorder.save(f'{self.global_frame}.mp4')
 

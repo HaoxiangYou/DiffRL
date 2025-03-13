@@ -15,7 +15,6 @@ class DMCViewer:
         qpos: joint qpos in mujoco conventions
         """
         np.copyto(self.physics.data.qpos, qpos)
-        self.physics.forward()
         if render_kwargs is None:
             pixels = self.physics.render(**self.render_kwargs)
         else:

@@ -213,21 +213,14 @@ def make(name, frame_stack, action_repeat, seed):
     return env
 
 def make_from_shac(env, cfg):
-    frame_stack = cfg.frame_stack 
+    # frame_stack = cfg.frame_stack 
     action_repeat = cfg.action_repeat 
-    seed = cfg.seed 
+    # seed = cfg.seed 
     env = ActionDTypeWrapper(env, np.float32)
     env = ActionRepeatWrapper(env, action_repeat)
     env = action_scale.Wrapper(env, minimum=-1.0, maximum=+1.0)
     # zoom in camera for quadruped
-    camera_id = 0 # default camera_id
-    pixels_key = 'pixels'
-
-    render_kwargs = dict(height=84, width=84, camera_id=camera_id)
-    env = pixels.Wrapper(env,
-                        pixels_only=True,
-                        render_kwargs=render_kwargs)
     # stack several frames
-    env = FrameStackWrapper(env, frame_stack, pixels_key)
+    # env = FrameStackWrapper(env, frame_stack, pixels_key)
     env = ExtendedTimeStepWrapper(env)
     return env

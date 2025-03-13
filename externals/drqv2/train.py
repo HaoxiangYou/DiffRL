@@ -56,6 +56,10 @@ class Workspace:
                                   self.cfg.action_repeat, self.cfg.seed)
         self.eval_env = dmc.make(self.cfg.task_name, self.cfg.frame_stack,
                                  self.cfg.action_repeat, self.cfg.seed)
+        
+        # print("observation_spec: ", self.train_env.observation_spec())
+        # print("action_spec: ", self.train_env.action_spec())
+        # import pdb; pdb.set_trace()
         # create replay buffer
         data_specs = (self.train_env.observation_spec(),
                       self.train_env.action_spec(),
@@ -183,6 +187,7 @@ class Workspace:
 
             # take env step
             time_step = self.train_env.step(action)
+            import pdb; pdb.set_trace()
             episode_reward += time_step.reward
             self.replay_storage.add(time_step)
             self.train_video_recorder.record(time_step.observation)
