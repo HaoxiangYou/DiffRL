@@ -17,6 +17,7 @@ import time
 import numpy as np
 import copy
 import torch
+import pickle
 from tensorboardX import SummaryWriter
 import yaml
 
@@ -31,6 +32,7 @@ from utils.running_mean_std import RunningMeanStd
 from utils.dataset import CriticDataset
 from utils.time_report import TimeReport
 from utils.average_meter import AverageMeter
+from viewer.video_recorder import VideoRecorder
 
 class SHAC:
     def __init__(self, cfg):
@@ -142,6 +144,9 @@ class SHAC:
         self.old_sigmas = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
         self.mus = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
         self.sigmas = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
+
+        # video recorder
+        self.video_recorder = VideoRecorder(fps=int(1/self.env.sim_dt), height=256, width=256, camera_id=self.env.dmc_render.render_kwargs["camera_id"])
 
         # counting variables
         self.iter_count = 0
@@ -303,12 +308,15 @@ class SHAC:
         return actor_loss
     
     @torch.no_grad()
-    def evaluate_policy(self, num_games, deterministic = False):
+    def evaluate_policy(self, num_games, deterministic=False, maximum_eval_length=None):
         episode_length_his = []
         episode_loss_his = []
         episode_discounted_loss_his = []
+        joint_qs = []
+        joint_qds = []
+
         episode_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
-        episode_length = torch.zeros(self.num_envs, dtype = int)
+        episode_length = torch.zeros(self.num_envs, dtype = int, device = self.device)
         episode_gamma = torch.ones(self.num_envs, dtype = torch.float32, device = self.device)
         episode_discounted_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
 
@@ -316,6 +324,9 @@ class SHAC:
         state_obs = obs["state_obs"]
 
         games_cnt = 0
+        if maximum_eval_length is None:
+            maximum_eval_length = self.max_episode_length
+
         while games_cnt < num_games:
             if self.state_obs_rms is not None:
                 state_obs = self.state_obs_rms.normalize(state_obs)
@@ -325,8 +336,13 @@ class SHAC:
             obs, rew, done, _ = self.env.step(torch.tanh(actions))
             state_obs = obs["state_obs"]
 
+            joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().clone())
+            joint_qds.append(self.env.state.joint_qd.view(self.num_envs, -1).detach().clone())
+
             episode_length += 1
 
+            # terminate the environment early during eval
+            done = torch.where(episode_length >= maximum_eval_length, torch.ones_like(done), done)
             done_env_ids = done.nonzero(as_tuple = False).squeeze(-1)
 
             episode_loss -= rew
@@ -348,7 +364,7 @@ class SHAC:
         mean_policy_loss = np.mean(np.array(episode_loss_his))
         mean_policy_discounted_loss = np.mean(np.array(episode_discounted_loss_his))
  
-        return mean_policy_loss, mean_policy_discounted_loss, mean_episode_length
+        return mean_policy_loss, mean_policy_discounted_loss, mean_episode_length, torch.stack(joint_qs), torch.stack(joint_qds)
 
     @torch.no_grad()
     def compute_target_values(self):
@@ -378,10 +394,17 @@ class SHAC:
         self.env.reset()
 
     @torch.no_grad()
-    def run(self, num_games):
-        mean_policy_loss, mean_policy_discounted_loss, mean_episode_length = self.evaluate_policy(num_games = num_games, deterministic = not self.stochastic_evaluation)
+    def run(self, num_games, save_dir=None, maximum_eval_length=None):
+        mean_policy_loss, mean_policy_discounted_loss, mean_episode_length, joint_qs, joint_qds = self.evaluate_policy(
+            num_games = num_games, deterministic = not self.stochastic_evaluation, maximum_eval_length=maximum_eval_length)
         print_info('mean episode loss = {}, mean discounted loss = {}, mean episode length = {}'.format(mean_policy_loss, mean_policy_discounted_loss, mean_episode_length))
-        
+        if save_dir is not None:
+            os.makedirs(save_dir, exist_ok=True)
+            self.save_video(joint_qs, save_dir=save_dir)    
+            trajs = {"dt":self.env.sim_dt, "joint_q":joint_qs.detach().cpu().numpy(), "joint_qd":joint_qds.detach().cpu().numpy()}
+            with open(os.path.join(save_dir, "trajs.pkl"), "wb") as f:
+                pickle.dump(trajs, f)
+
     def train(self):
         self.start_time = time.time()
 
@@ -391,6 +414,7 @@ class SHAC:
         self.time_report.add_timer("forward simulation")
         self.time_report.add_timer("backward simulation")
         self.time_report.add_timer("prepare critic dataset")
+        self.time_report.add_timer("evaluation")
         self.time_report.add_timer("actor training")
         self.time_report.add_timer("critic training")
 
@@ -493,7 +517,7 @@ class SHAC:
             time_end_epoch = time.time()
 
             # logging
-            time_elapse = time.time() - self.start_time
+            time_elapse = time.time() - self.start_time - self.time_report.timers["evaluation"].time_total
             self.writer.add_scalar('lr/iter', lr, self.iter_count)
             self.writer.add_scalar('actor_loss/step', self.actor_loss, self.step_count)
             self.writer.add_scalar('actor_loss/iter', self.actor_loss, self.iter_count)
@@ -533,7 +557,15 @@ class SHAC:
             self.writer.flush()
         
             if self.save_interval > 0 and (self.iter_count % self.save_interval == 0):
-                self.save(self.name + "policy_iter{}_reward{:.3f}".format(self.iter_count, -mean_policy_loss))
+                print_info("Start Evaluation with maximum trajectory length:{}".format(self.max_episode_length//5))
+                eval_start_time = time.time()
+                self.time_report.start_timer("evaluation")
+                save_dir = os.path.join(self.log_dir, "eval/iter_{}".format(self.iter_count))
+                # evaluate shorter trajectories 
+                self.run(self.num_envs, save_dir=save_dir, maximum_eval_length=self.max_episode_length//5)
+                self.save(save_dir=save_dir, filename=self.name + "policy_iter{}_reward{:.3f}".format(self.iter_count, -mean_policy_loss))
+                self.time_report.end_timer("evaluation")
+                print_info("Evaluation done in {} seconds".format(time.time()-eval_start_time))
 
             # update target critic
             with torch.no_grad():
@@ -557,18 +589,30 @@ class SHAC:
         np.save(open(os.path.join(self.log_dir, 'episode_length_his.npy'), 'wb'), self.episode_length_his)
 
         # evaluate the final policy's performance
-        self.run(self.num_envs)
+        print_info("Start Evaluation for final policy")
+        self.run(self.num_envs, save_dir=os.path.join(self.log_dir, "eval/final_policy"))
 
         self.close()
-    
+
+    def save_video(self, joint_qs, save_dir=None):
+        self.video_recorder.update_save_dir(save_dir)
+        for i in range(joint_qs.shape[1]):
+            self.video_recorder.reset()
+            frames = self.env.render_traj(joint_qs[:,i:i+1,:], self.video_recorder.render_kwargs)
+            for frame in frames:
+                self.video_recorder.append(frame[0])
+            self.video_recorder.save("eval_traj_{}.mp4".format(i))
+
     def play(self, cfg):
         self.load(cfg['params']['general']['checkpoint'])
-        self.run(cfg['params']['config']['player']['games_num'])
+        self.run(cfg['params']['config']['player']['games_num'], save_dir=os.path.join(os.path.dirname(cfg['params']['general']['checkpoint']), "eval/play"))
         
-    def save(self, filename = None):
+    def save(self, filename = None, save_dir = None):
+        if save_dir is None:
+            save_dir = self.log_dir
         if filename is None:
             filename = 'best_policy'
-        torch.save([self.actor, self.critic, self.target_critic, self.state_obs_rms, self.ret_rms], os.path.join(self.log_dir, "{}.pt".format(filename)))
+        torch.save([self.actor, self.critic, self.target_critic, self.state_obs_rms, self.ret_rms], os.path.join(save_dir, "{}.pt".format(filename)))
     
     def load(self, path):
         checkpoint = torch.load(path)

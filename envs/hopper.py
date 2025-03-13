@@ -48,10 +48,7 @@ class HopperEnv(DFlexEnv):
 
         self.init_sim()
 
-                # whether output images as observation
-        self.dmc_render = None
-        if self.enable_vis_obs:
-            self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/hopper.xml"), 
+        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/hopper.xml"), 
                                     camera_id=0, height=self.obs_img_height, width=self.obs_img_width)
 
         # other parameters
@@ -185,6 +182,22 @@ class HopperEnv(DFlexEnv):
             mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1)[env_ids]).detach().cpu().numpy()
             for mujoco_joint_q in mujoco_joint_qs:
                 frames.append(self.dmc_render.render(mujoco_joint_q, render_kwargs))
+            return np.stack(frames)
+        else:
+            raise ValueError("Render is being called without dmc render")
+        
+    """
+    This function render a given trajectory (time sequences of joint_q in shac conventions) in shape (traj_length, num_env, num_q)
+    """
+    def render_traj(self, traj, render_kwargs=None):
+        frames = []
+        if self.dmc_render:
+            for mujoco_joint_qs in traj:
+                singe_frames = []
+                mujoco_joint_qs = self.get_mujoco_joint_q(mujoco_joint_qs).detach().cpu().numpy()
+                for mujoco_joint_q in mujoco_joint_qs:
+                    singe_frames.append(self.dmc_render.render(mujoco_joint_q, render_kwargs))
+                frames.append(singe_frames)
             return np.stack(frames)
         else:
             raise ValueError("Render is being called without dmc render")
