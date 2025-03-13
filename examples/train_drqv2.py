@@ -38,6 +38,7 @@ def make_agent(obs_spec, action_spec, cfg):
 
 class MakeDMfromShac(dm_env.Environment):
     def __init__(self, cfg):
+        self.cfg = cfg
         env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         seeding(cfg["params"]["general"]["seed"])
         self.env =  env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
@@ -60,11 +61,10 @@ class MakeDMfromShac(dm_env.Environment):
         if hasattr(self.env, 'observation_spec'):
             self._observation_spec = self._env.observation_spec()
         else:
-            obs_high = np.inf * np.ones(self.env.num_vis_obs, dtype='float32')
             self._observation_spec = specs.BoundedArray(self.env.num_vis_obs,
-                                                        minimum= -obs_high,
-                                                        maximum= obs_high,
-                                                        dtype='float32',
+                                                        minimum= 0,
+                                                        maximum= 255,
+                                                        dtype='uint8',
                                                         name='observation')
         if hasattr(self.env, 'action_spec'):
             self._action_spec = self._env.action_spec()
@@ -84,18 +84,18 @@ class MakeDMfromShac(dm_env.Environment):
         # return stacked observation (9 * width * height)
         self.env.clear_grad()
         obs = self.env.reset()
-        vis_obs = torch.squeeze(obs["vis_obs"])
+        vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu().clone(),dtype="uint8")
         return dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
                                reward=None,
                                discount=1.0,
                                observation=vis_obs)
     
     def step(self, action):
-        obs, rew, done, extra_info = self.env.step(torch.tanh(action))
+        obs, rew, done, extra_info = self.env.step(torch.tanh(torch.tensor(action, dtype = torch.float32, device = self.cfg.device)))
         del extra_info
-        vis_obs = torch.squeeze(obs["vis_obs"])
+        vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu().clone(),dtype="uint8")
         return dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
-                               reward=rew,
+                               reward=rew.detach().cpu().clone().item(),
                                discount=1.0,
                                observation=vis_obs)
     
@@ -110,6 +110,11 @@ class MakeDMfromShac(dm_env.Environment):
     
     def discount_spec(self):
         return self._discount_spec
+    
+    def render(self):
+        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
+        frame = self.env.dmc_render.render(mujoco_joint_q, None)
+        return frame # since we only have one env, so the envid is 0
 
 class Workspace:
     def __init__(self, cfg):
@@ -134,9 +139,12 @@ class Workspace:
         # create envs
         # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         env = MakeDMfromShac(self.cfg)
-        import pdb; pdb.set_trace()
-        self.train_env = dmc.make_from_shac(self.cfg)
-        self.eval_env = dmc.make_from_shac(self.cfg)
+        self.train_env = dmc.make_from_shac(env, self.cfg)
+        self.eval_env = dmc.make_from_shac(env, self.cfg)
+        # print("observation_spec: ", self.train_env.observation_spec())
+        # print("action_spec: ", self.train_env.action_spec())
+        # import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         # create replay buffer
         data_specs = (self.train_env.observation_spec(),
                       self.train_env.action_spec(),
