@@ -39,8 +39,6 @@ params:
     vis_obs: True
     img_height: 84
     img_width: 84
-    img_height: 84
-    img_width: 84
     img_aug: False
     img_aug_padding: 4
     save_interval: 400
