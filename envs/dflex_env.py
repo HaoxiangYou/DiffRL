@@ -20,8 +20,8 @@ from gym import spaces
 
 class DFlexEnv:
     
-    def __init__(self, num_envs, state_num_obs, num_act, episode_length, MM_caching_frequency = 1, seed=0, no_grad=True, render=False, device='cuda:0', 
-                vis_obs=False, img_height=84, img_width=84, render_mode="usd"):
+    def __init__(self, num_envs, state_num_obs, num_act, episode_length, MM_caching_frequency = 1, seed=0, no_grad=True, device='cuda:0', 
+                vis_obs=False, img_height=84, img_width=84):
         self.seed = seed
 
         self.no_grad = no_grad
@@ -31,18 +31,12 @@ class DFlexEnv:
 
         self.device = device
 
-        self.record = render
-
         self.sim_time = 0.0
 
         # visual obs related variables
         self.enable_vis_obs = vis_obs
         self.obs_img_height = img_height
         self.obs_img_width = img_width
-
-        # eval videos related variables
-        self.render_mode = render_mode
-        self.num_frames = 0 # record the number of frames for rendering in usd mode
 
         self.num_environments = num_envs
         self.num_agents = 1

@@ -19,26 +19,19 @@ import dflex as df
 import numpy as np
 np.set_printoptions(precision=5, linewidth=256, suppress=True)
 
-try:
-    from pxr import Usd
-except ModuleNotFoundError:
-    print("No pxr package")
-
 from utils import load_utils as lu
 from utils import torch_utils as tu
 from viewer.dmc_viewer import DMCViewer
-from viewer.video_recorder import VideoRecorder
 
 class HumanoidEnv(DFlexEnv):
 
-    def __init__(self, render=False, render_mode="usd", device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84,
+    def __init__(self,  device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84,
                 vis_obs=False, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
         num_state_obs = 76
         num_act = 21
 
         super(HumanoidEnv, self).__init__(num_envs, num_state_obs, num_act, episode_length, MM_caching_frequency, seed, 
-                                    no_grad=no_grad, render=render, device=device, vis_obs=vis_obs, 
-                                    img_height=img_height, img_width=img_width, render_mode=render_mode)
+                                    no_grad=no_grad, device=device, vis_obs=vis_obs, img_height=img_height, img_width=img_width)
 
         self.stochastic_init = stochastic_init
 
@@ -83,28 +76,6 @@ class HumanoidEnv(DFlexEnv):
         self.termination_tolerance = 0.1
         self.height_rew_scale = 10.0
 
-        #-----------------------
-        # set up recorder
-        if (self.record):
-            # recording using usd
-            if self.render_mode == "usd":
-                self.stage = Usd.Stage.CreateNew("outputs/" + "Humanoid_" + str(self.num_envs) + ".usd")
-
-                self.recorder = df.render.UsdRenderer(self.model, self.stage)
-                self.recorder.draw_points = True
-                self.recorder.draw_springs = True
-                self.recorder.draw_shapes = True
-                self.recording_time = 0.0
-            # recording using dmc
-            elif self.render_mode == "dmc":
-                if self.dmc_render is None:
-                    self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/humanoid.xml"), 
-                                            camera_id=0, height=img_height, width=img_width)
-                # make the high resolution videos for eval
-                self.recorder = VideoRecorder(root_dir="outputs", fps=int(1/self.sim_dt), height=256, width=256, camera_id=0)
-            else:
-                raise ValueError("render mode have to be usd or dmc")
-
     def init_sim(self):
         self.builder = df.sim.ModelBuilder()
 
@@ -137,12 +108,8 @@ class HumanoidEnv(DFlexEnv):
 
         self.start_pos = []
 
-        if self.record:
-            self.env_dist = 2.5
-        else:
-            self.env_dist = 0. # set to zero for training for numerical consistency
-
         start_height = 1.35
+        start_pos_z = 0.0
 
         asset_folder = os.path.join(os.path.dirname(__file__), 'assets')
         for i in range(self.num_environments):
@@ -160,7 +127,6 @@ class HumanoidEnv(DFlexEnv):
                 load_armature=True)
 
             # base transform
-            start_pos_z = i*self.env_dist
             self.start_pos.append([0.0, start_height, start_pos_z])
 
             self.builder.joint_q[i*self.num_joint_q:i*self.num_joint_q + 3] = self.start_pos[-1]
@@ -193,26 +159,6 @@ class HumanoidEnv(DFlexEnv):
 
         if (self.model.ground):
             self.model.collide(self.state)
-
-    def recording(self):
-        if self.record:            
-            if self.render_mode == "usd":
-                recording_interval = 1
-                self.recording_time += self.dt
-                self.recorder.update(self.state, self.recording_time)
-                if (self.num_frames == recording_interval):
-                    try:
-                        self.stage.Save()
-                    except:
-                        print("USD save error")
-                self.num_frames -= recording_interval
-            elif self.render_mode == "dmc":
-                # using the recorder render_kwargs 
-                # only record the first envs
-                pixels = self.render(torch.tensor([0]), self.recorder.render_kwargs)
-                self.recorder.append(pixels[0])
-                if self.reset_buf[0]:
-                    self.recorder.save("humanoid.mp4")
 
     """
     This function render imgs for target envs
@@ -273,7 +219,6 @@ class HumanoidEnv(DFlexEnv):
         self.reset_buf = torch.zeros_like(self.reset_buf)
 
         self.progress_buf += 1
-        self.num_frames += 1
 
         self.calculateStateObservations()
         self.calculateReward()
@@ -295,8 +240,6 @@ class HumanoidEnv(DFlexEnv):
 
         if len(env_ids) > 0:
            self.reset(env_ids)
-
-        self.recording()
 
         obs = {"state_obs": self.state_obs_buf}
         if self.enable_vis_obs:

@@ -42,11 +42,9 @@ class DVA:
         seeding(cfg["params"]["general"]["seed"])
         self.env = env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
                             device = cfg["params"]["general"]["device"], \
-                            render = cfg["params"]["general"]["render"], \
                             vis_obs = cfg["params"]["config"].get("vis_obs", False), \
                             img_height = cfg["params"]["config"].get("img_height", 84),\
                             img_width = cfg["params"]["config"].get("img_width", 84),\
-                            render_mode = cfg["params"]["config"]["player"].get("render_mode", 'usd') , \
                             seed = cfg["params"]["general"]["seed"], \
                             episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
                             stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \

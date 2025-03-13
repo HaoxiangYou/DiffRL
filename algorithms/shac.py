@@ -41,7 +41,6 @@ class SHAC:
         seeding(cfg["params"]["general"]["seed"])
         self.env = env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
                             device = cfg["params"]["general"]["device"], \
-                            render = cfg["params"]["general"]["render"], \
                             seed = cfg["params"]["general"]["seed"], \
                             episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
                             stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \

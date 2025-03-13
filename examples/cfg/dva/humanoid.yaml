@@ -50,4 +50,3 @@ params:
       games_num: 1
       num_actors: 1
       print_stats: True
-      render_mode: dmc # ['usd', 'dmc']
