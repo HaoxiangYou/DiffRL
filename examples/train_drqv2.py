@@ -28,6 +28,7 @@ from externals.drqv2.logger import Logger
 from externals.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
 from externals.drqv2.video import TrainVideoRecorder, VideoRecorder
 from utils.common import *
+from viewer.dmc_viewer import DMCViewer
 
 torch.backends.cudnn.benchmark = True
 
@@ -60,6 +61,8 @@ class MakeDMfromShac(dm_env.Environment):
         self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
         self.camera_id = 0 # render camera id. 
         self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
+        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/half_cheetah.xml"), 
+                                            camera_id=0, height=self.render_size, width=self.render_size)
         
         if hasattr(self.env, 'observation_spec'):
             self._observation_spec = self._env.observation_spec()
@@ -115,9 +118,8 @@ class MakeDMfromShac(dm_env.Environment):
         return self._discount_spec
     
     def render(self):
-        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
-        frame = self.env.dmc_render.render(mujoco_joint_q, self.render_kwargs)
-        return frame # since we only have one env, so the envid is 0
+        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().clone().numpy()
+        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
 
 class Workspace:
     def __init__(self, cfg):
@@ -203,7 +205,7 @@ class Workspace:
                 self.video_recorder.record(self.eval_env)
                 total_reward += time_step.reward
                 step += 1
-                import pdb; pdb.set_trace()
+                
             episode += 1
             self.video_recorder.save(f'{self.global_frame}.mp4')
 
