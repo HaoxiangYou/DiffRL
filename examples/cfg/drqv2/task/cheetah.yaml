@@ -20,6 +20,7 @@ params:
     device: cuda:0
     render: False 
     seed: 0
+    train: True
 
   config:
     name: df_cheetah_dva

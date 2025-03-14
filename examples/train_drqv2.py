@@ -18,9 +18,11 @@ from pathlib import Path
 import hydra
 import numpy as np
 import torch
+import copy
 
 import dm_env
 from dm_env import specs
+from tensorboardX import SummaryWriter
 import envs
 from externals.drqv2 import utils
 from externals.drqv2 import dmc
@@ -29,6 +31,9 @@ from externals.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loade
 from externals.drqv2.video import TrainVideoRecorder, VideoRecorder
 from utils.common import *
 from viewer.dmc_viewer import DMCViewer
+from utils.time_report import TimeReport
+import time
+import yaml
 
 torch.backends.cudnn.benchmark = True
 
@@ -63,7 +68,7 @@ class MakeDMfromShac(dm_env.Environment):
         self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
         self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/half_cheetah.xml"), 
                                             camera_id=0, height=self.render_size, width=self.render_size)
-        
+        self.device = cfg["params"]["general"]["device"]
         if hasattr(self.env, 'observation_spec'):
             self._observation_spec = self._env.observation_spec()
         else:
@@ -98,7 +103,7 @@ class MakeDMfromShac(dm_env.Environment):
                                observation=vis_obs)
     
     def step(self, action):
-        obs, rew, done, extra_info = self.env.step(torch.tanh(torch.tensor(action, dtype = torch.float32, device = self.cfg.device)))
+        obs, rew, done, extra_info = self.env.step(torch.tanh(torch.tensor(action, dtype = torch.float32, device = self.device)))
         del extra_info
         vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
         return dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
@@ -138,18 +143,20 @@ class Workspace:
         self.timer = utils.Timer()
         self._global_step = 0
         self._global_episode = 0
+        self.time_report = TimeReport()
+        self.writer = SummaryWriter(os.path.join(self.work_dir, 'tb'))
 
     def setup(self):
         # create logger
-        self.logger = Logger(self.work_dir, use_tb=self.cfg.use_tb)
+        # self.logger = Logger(self.work_dir, use_tb=self.cfg.use_tb)
+
         # create envs
         # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         env = MakeDMfromShac(self.cfg)
         self.env = env
         self.train_env = dmc.make_from_shac(env, self.cfg)
         self.eval_env = dmc.make_from_shac(env, self.cfg)
-        # print("observation_spec: ", self.train_env.observation_spec())
-        # print("action_spec: ", self.train_env.action_spec())
+
         # create replay buffer
         data_specs = (self.train_env.observation_spec(),
                       self.train_env.action_spec(),
@@ -208,14 +215,25 @@ class Workspace:
             episode += 1
             self.video_recorder.save(f'{self.global_frame}.mp4')
 
-        with self.logger.log_and_dump_ctx(self.global_frame, ty='eval') as log:
-            log('episode_reward', total_reward / episode)
-            log('episode_length', step * self.cfg.action_repeat / episode)
-            log('episode', self.global_episode)
-            log('step', self.global_step)
+        # with self.logger.log_and_dump_ctx(self.global_frame, ty='eval') as log:
+        #     log('episode_reward', total_reward / episode)
+        #     log('episode_length', step * self.cfg.action_repeat / episode)
+        #     log('episode', self.global_episode)
+        #     log('step', self.global_step)
 
     def train(self):
         # predicates
+        self.start_time = time.time()
+
+        # add timers
+        self.time_report.add_timer("algorithm")
+        self.time_report.add_timer("prepare critic dataset")
+        self.time_report.add_timer("actor training")
+        self.time_report.add_timer("critic training")
+        
+        self.time_report.start_timer("algorithm")
+
+
         train_until_step = utils.Until(self.cfg.num_train_frames,
                                        self.cfg.action_repeat)
         seed_until_step = utils.Until(self.cfg.num_seed_frames,
@@ -228,7 +246,8 @@ class Workspace:
         self.replay_storage.add(time_step)
         self.train_video_recorder.init(time_step.observation)
         metrics = None
-        
+
+        import pdb; pdb.set_trace()
         while train_until_step(self.global_step):
             if time_step.last():
                 self._global_episode += 1
@@ -238,15 +257,15 @@ class Workspace:
                     # log stats
                     elapsed_time, total_time = self.timer.reset()
                     episode_frame = episode_step * self.cfg.action_repeat
-                    with self.logger.log_and_dump_ctx(self.global_frame,
-                                                      ty='train') as log:
-                        log('fps', episode_frame / elapsed_time)
-                        log('total_time', total_time)
-                        log('episode_reward', episode_reward)
-                        log('episode_length', episode_frame)
-                        log('episode', self.global_episode)
-                        log('buffer_size', len(self.replay_storage))
-                        log('step', self.global_step)
+                    # with self.logger.log_and_dump_ctx(self.global_frame,
+                    #                                   ty='train') as log:
+                    #     log('fps', episode_frame / elapsed_time)
+                    #     log('total_time', total_time)
+                    #     log('episode_reward', episode_reward)
+                    #     log('episode_length', episode_frame)
+                    #     log('episode', self.global_episode)
+                    #     log('buffer_size', len(self.replay_storage))
+                    #     log('step', self.global_step)
 
                 # reset env
                 time_step = self.train_env.reset()
@@ -260,8 +279,8 @@ class Workspace:
 
             # try to evaluate
             if eval_every_step(self.global_step):
-                self.logger.log('eval_total_time', self.timer.total_time(),
-                                self.global_frame)
+                # self.logger.log('eval_total_time', self.timer.total_time(),
+                #                 self.global_frame)
                 self.eval()
 
             # sample action
@@ -273,7 +292,7 @@ class Workspace:
             # try to update the agent
             if not seed_until_step(self.global_step):
                 metrics = self.agent.update(self.replay_iter, self.global_step)
-                self.logger.log_metrics(metrics, self.global_frame, ty='train')
+                # self.logger.log_metrics(metrics, self.global_frame, ty='train')
 
             # take env step
             time_step = self.train_env.step(action)
