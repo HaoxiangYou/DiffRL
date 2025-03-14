@@ -115,7 +115,7 @@ class Workspace:
                 self.video_recorder.record(self.eval_env)
                 total_reward += time_step.reward
                 step += 1
-
+            import pdb; pdb.set_trace()
             episode += 1
             self.video_recorder.save(f'{self.global_frame}.mp4')
 
@@ -187,7 +187,6 @@ class Workspace:
 
             # take env step
             time_step = self.train_env.step(action)
-            import pdb; pdb.set_trace()
             episode_reward += time_step.reward
             self.replay_storage.add(time_step)
             self.train_video_recorder.record(time_step.observation)

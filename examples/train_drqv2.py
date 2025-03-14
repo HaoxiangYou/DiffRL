@@ -53,7 +53,7 @@ class MakeDMfromShac(dm_env.Environment):
                             episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
                             stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
                             MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
-                            no_grad = False)
+                            no_grad = True)
         print('num_envs = ', self.env.num_envs)
         print('num_actions = ', self.env.num_actions)
         print('num_state_obs = ', self.env.num_state_obs)
@@ -90,7 +90,8 @@ class MakeDMfromShac(dm_env.Environment):
         # return stacked observation (9 * width * height)
         self.env.clear_grad()
         obs = self.env.reset()
-        vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu().clone(),dtype="uint8")
+        # vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu(),dtype="uint8")
+        vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
         return dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
                                reward=None,
                                discount=1.0,
@@ -99,9 +100,9 @@ class MakeDMfromShac(dm_env.Environment):
     def step(self, action):
         obs, rew, done, extra_info = self.env.step(torch.tanh(torch.tensor(action, dtype = torch.float32, device = self.cfg.device)))
         del extra_info
-        vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu().clone(),dtype="uint8")
+        vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
         return dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
-                               reward=rew.detach().cpu().clone().item(),
+                               reward=rew.detach().cpu().item(),
                                discount=1.0,
                                observation=vis_obs)
     
@@ -118,7 +119,7 @@ class MakeDMfromShac(dm_env.Environment):
         return self._discount_spec
     
     def render(self):
-        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().clone().numpy()
+        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
         return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
 
 class Workspace:
@@ -144,12 +145,11 @@ class Workspace:
         # create envs
         # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         env = MakeDMfromShac(self.cfg)
+        self.env = env
         self.train_env = dmc.make_from_shac(env, self.cfg)
         self.eval_env = dmc.make_from_shac(env, self.cfg)
         # print("observation_spec: ", self.train_env.observation_spec())
         # print("action_spec: ", self.train_env.action_spec())
-        # import pdb; pdb.set_trace()
-        # import pdb; pdb.set_trace()
         # create replay buffer
         data_specs = (self.train_env.observation_spec(),
                       self.train_env.action_spec(),
@@ -205,7 +205,6 @@ class Workspace:
                 self.video_recorder.record(self.eval_env)
                 total_reward += time_step.reward
                 step += 1
-                
             episode += 1
             self.video_recorder.save(f'{self.global_frame}.mp4')
 
@@ -229,6 +228,7 @@ class Workspace:
         self.replay_storage.add(time_step)
         self.train_video_recorder.init(time_step.observation)
         metrics = None
+        
         while train_until_step(self.global_step):
             if time_step.last():
                 self._global_episode += 1
@@ -269,7 +269,7 @@ class Workspace:
                 action = self.agent.act(time_step.observation,
                                         self.global_step,
                                         eval_mode=False)
-
+            
             # try to update the agent
             if not seed_until_step(self.global_step):
                 metrics = self.agent.update(self.replay_iter, self.global_step)
