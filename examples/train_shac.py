@@ -77,7 +77,8 @@ def get_args(): # TODO: delve into the arguments
         {"name": "--device", "type": str, "default": "cuda:0"},
         {"name": "--seed", "type": int, "default": 0, "help": "Random seed"},
         {"name": "--render", "action": "store_true", "default": False,
-            "help": "whether generate rendering file."}]
+            "help": "whether generate rendering file."},
+        {"name": "--num_actors", "type": int, "default": 64, "help": "Number of Actors"}]
     
     # parse arguments
     args = parse_arguments(
@@ -95,9 +96,12 @@ if __name__ == '__main__':
     if args.play or args.test:
         cfg_train["params"]["config"]["num_actors"] = cfg_train["params"]["config"].get("player", {}).get("num_actors", 1)
 
-    if not args.no_time_stamp:
-        args.logdir = os.path.join(args.logdir, get_time_stamp())
+    # Disable it just for testing the num of actors
+    # if not args.no_time_stamp:
+    #     args.logdir = os.path.join(args.logdir, get_time_stamp())
     
+    args.logdir = os.path.join(args.logdir, "actors_" + str(args.num_actors)) # To distinguish num of actors using 
+
     args.device = torch.device(args.device)
 
     vargs = vars(args)
@@ -105,7 +109,7 @@ if __name__ == '__main__':
     cfg_train["params"]["general"] = {}
     for key in vargs.keys():
         cfg_train["params"]["general"][key] = vargs[key]
-
+    cfg_train["params"]["config"]["num_actors"] = vargs["num_actors"]
     traj_optimizer = shac.SHAC(cfg_train)
 
     if args.train:

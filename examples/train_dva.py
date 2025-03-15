@@ -69,7 +69,8 @@ def get_args(): # TODO: delve into the arguments
         {"name": "--device", "type": str, "default": "cuda:0"},
         {"name": "--seed", "type": int, "default": 0, "help": "Random seed"},
         {"name": "--render", "action": "store_true", "default": False,
-            "help": "whether generate rendering file."}]
+            "help": "whether generate rendering file."},
+        {"name": "--num_actor", "type": int, "default": 64, "help": "Number of Actors"}]
     
     # parse arguments
     args = parse_arguments(

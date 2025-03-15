@@ -90,7 +90,7 @@ class SHAC:
         self.grad_norm = cfg["params"]["config"]["grad_norm"]
         
         if cfg['params']['general']['train']:
-            self.log_dir = cfg["params"]["general"]["logdir"]
+            self.log_dir = cfg["params"]["general"]["logdir"] 
             os.makedirs(self.log_dir, exist_ok = True)
             # save config
             save_cfg = copy.deepcopy(cfg)
