@@ -379,7 +379,10 @@ class DVA:
             if self.enable_img_aug:
                 obs = self.aug(obs)
             if isinstance(self.actor, ActorStochasticMLP):
-                predicted_actions = self.actor.mu_net(self.actor.encoder(obs.view(-1, *self.num_vis_obs)).view(self.steps_num, self.num_envs, -1)) + action_eps * self.actor.logstd.exp()
+                if self.enable_vis_obs:
+                    predicted_actions = self.actor.mu_net(self.actor.encoder(obs)) + action_eps * self.actor.logstd.exp()
+                else:
+                    predicted_actions = self.actor.mu_net(obs) + action_eps * self.actor.logstd.exp()
             elif isinstance(self.actor, ActorDeterministicMLP):
                 predicted_actions = self.actor(obs)
             else:
@@ -392,9 +395,9 @@ class DVA:
         self.time_report.end_timer("forward simulation")
         self.time_report.start_timer("backward simulation")
         if self.enable_vis_obs:
-            obs_buf = self.vis_obs_buf.clone()
+            obs_buf = self.vis_obs_buf.clone().view(-1, *self.num_vis_obs)
         else:
-            obs_buf = self.state_obs_buf.clone()
+            obs_buf = self.state_obs_buf.clone().view(-1, self.num_state_obs)
         self.time_report.end_timer("backward simulation")
 
         self.time_report.start_timer("actor supervised training")
@@ -403,16 +406,16 @@ class DVA:
             action_eps = None
             if isinstance(self.actor, models.actor.ActorStochasticMLP):
                 if self.enable_vis_obs:
-                    action_eps = (torch.stack(aux_infos["actions"]) - self.actor.mu_net(self.actor.encoder(obs_buf.view(-1, *self.num_vis_obs)).view(self.steps_num, self.num_envs, -1))) / self.actor.logstd.exp()
+                    action_eps = (torch.stack(aux_infos["actions"]).view(-1, self.num_actions) - self.actor.mu_net(self.actor.encoder(obs_buf))) / self.actor.logstd.exp()
                 else:
-                    action_eps = (torch.stack(aux_infos["actions"]) - self.actor.mu_net(obs_buf)) / self.actor.logstd.exp()
+                    action_eps = (torch.stack(aux_infos["actions"]).view(-1, self.num_actions) - self.actor.mu_net(obs_buf)) / self.actor.logstd.exp()
 
         actions = aux_infos["actions"]
         actions = update_actions(actor_loss, actions)
 
         self.actor_optimizer.zero_grad()
         # using full batch
-        actor_supervised_loss = compute_supervised_loss(obs_buf, torch.stack(actions), action_eps)
+        actor_supervised_loss = compute_supervised_loss(obs_buf, torch.stack(actions).view(-1, self.num_actions), action_eps)
         actor_supervised_loss.backward()
 
         with torch.no_grad():
