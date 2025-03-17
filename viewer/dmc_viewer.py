@@ -7,6 +7,7 @@ from dm_control.mujoco.engine import Physics
 
 class DMCViewer:
     def __init__(self, file_path:str, height=84, width=84, camera_id=0):
+        self.file_path = file_path
         self.physics = Physics.from_xml_path(file_path)
         self.render_kwargs = dict(height=height, width=width, camera_id=camera_id)
 

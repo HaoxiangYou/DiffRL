@@ -25,14 +25,12 @@ from viewer.dmc_viewer import DMCViewer
 
 class CheetahEnv(DFlexEnv):
 
-    def __init__(self, device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84,
-                vis_obs=False, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
+    def __init__(self, device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
         num_state_obs = 17
         num_act = 6
     
         super(CheetahEnv, self).__init__(num_envs, num_state_obs, num_act, episode_length, MM_caching_frequency, seed, 
-                                    no_grad=no_grad, device=device, vis_obs=vis_obs, 
-                                    img_height=img_height, img_width=img_width)
+                                    no_grad=no_grad, device=device, img_height=img_height, img_width=img_width)
 
         self.stochastic_init = stochastic_init
         self.early_termination = early_termination
@@ -149,7 +147,7 @@ class CheetahEnv(DFlexEnv):
         else:
             raise ValueError("Render is being called without dmc render")
 
-    def step(self, actions):
+    def step(self, actions, enable_reset = True, enable_vis_obs = False):
         actions = actions.view((self.num_envs, self.num_actions))
 
         actions = torch.clip(actions, -1., 1.)
@@ -169,30 +167,34 @@ class CheetahEnv(DFlexEnv):
         self.calculateReward()
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if self.enable_vis_obs:
-            if len(env_ids) < self.num_envs:
-                self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+        if enable_vis_obs:
+            if enable_reset:
+                if len(env_ids) < self.num_envs:
+                    self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+            else:
+                self.calculateVisualObservations(torch.arange(self.num_envs, dtype=torch.long, device=self.device))
 
-        if self.no_grad == False:
+        if self.no_grad == False and enable_reset == True:
             self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
                 'state_obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
-            if self.enable_vis_obs:
+            if enable_vis_obs:
                 self.vis_obs_buf_before_reset = self.vis_obs_buf.clone()
                 self.extras["vis_obs_before_reset"] = self.vis_obs_buf_before_reset
 
-        if len(env_ids) > 0:
-           self.reset(env_ids)
+        if enable_reset:
+            if len(env_ids) > 0:
+                self.reset(env_ids)
 
         obs = {"state_obs": self.state_obs_buf}
-        if self.enable_vis_obs:
+        if enable_vis_obs:
             obs["vis_obs"] = self.vis_obs_buf
 
         return obs, self.rew_buf, self.reset_buf, self.extras
     
-    def reset(self, env_ids = None, force_reset = True):
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=False):
         if env_ids is None:
             if force_reset == True:
                 env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device)
@@ -222,7 +224,7 @@ class CheetahEnv(DFlexEnv):
             self.progress_buf[env_ids] = 0
             
             self.calculateStateObservations()
-            if self.enable_vis_obs:
+            if enable_vis_obs:
                 pixels = self.render(env_ids)
                 # three identical images at reset
                 pixels = torch.tile(torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device), (1, 3, 1, 1))
@@ -230,7 +232,7 @@ class CheetahEnv(DFlexEnv):
         
             
         obs = {"state_obs": self.state_obs_buf}
-        if self.enable_vis_obs:
+        if enable_vis_obs:
             obs["vis_obs"] = self.vis_obs_buf
 
         return obs
@@ -266,12 +268,12 @@ class CheetahEnv(DFlexEnv):
     This function starts collecting a new trajectory from the current states but cuts off the computation graph to the previous states.
     It has to be called every time the algorithm starts an episode and it returns the observation vectors
     '''
-    def initialize_trajectory(self):
+    def initialize_trajectory(self, enable_vis_obs=False):
         self.clear_grad()
         self.calculateStateObservations()
         obs = {"state_obs": self.state_obs_buf}
         # visual obs already don't have gradient
-        if self.enable_vis_obs:
+        if enable_vis_obs:
             obs["vis_obs"] = self.vis_obs_buf
 
         return obs

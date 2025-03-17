@@ -319,8 +319,12 @@ class SHAC:
         episode_gamma = torch.ones(self.num_envs, dtype = torch.float32, device = self.device)
         episode_discounted_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
 
-        obs = self.env.reset()
+        env = self.env.clone()
+        obs = env.reset()
         state_obs = obs["state_obs"]
+
+        joint_qs.append(env.state.joint_q.view(self.num_envs, -1).detach().clone())
+        joint_qds.append(env.state.joint_qd.view(self.num_envs, -1).detach().clone())
 
         games_cnt = 0
         if maximum_eval_length is None:
@@ -332,11 +336,11 @@ class SHAC:
 
             actions = self.actor(state_obs, deterministic = deterministic)
 
-            obs, rew, done, _ = self.env.step(torch.tanh(actions))
+            obs, rew, done, _ = env.step(torch.tanh(actions))
             state_obs = obs["state_obs"]
 
-            joint_qs.append(self.env.state.joint_q.view(self.num_envs, -1).detach().clone())
-            joint_qds.append(self.env.state.joint_qd.view(self.num_envs, -1).detach().clone())
+            joint_qs.append(env.state.joint_q.view(self.num_envs, -1).detach().clone())
+            joint_qds.append(env.state.joint_qd.view(self.num_envs, -1).detach().clone())
 
             episode_length += 1
 
