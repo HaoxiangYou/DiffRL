@@ -429,7 +429,7 @@ class DVA:
                 print('NaN gradient')
                 raise ValueError
 
-        self.actor_supervised_loss = (actor_supervised_loss / (self.trajopt_lr)).detach().cpu().item()
+        self.actor_supervised_loss = (actor_supervised_loss * (self.trajopt_lr)).detach().cpu().item()
         self.actor_optimizer.step()
         self.time_report.end_timer("actor supervised training")
         self.time_report.end_timer("compute actor loss")
