@@ -1,7 +1,7 @@
 seeds='100 200 300 400 500'
 algorithms='shac'
 num_actors='16 32 64 128'
-envs='ant cheetah hopper humanoid'
+envs='humanoid' # ant cheetah hopper 
 for env in $envs
 do
     for algorithm in $algorithms

@@ -100,7 +100,7 @@ if __name__ == '__main__':
     # if not args.no_time_stamp:
     #     args.logdir = os.path.join(args.logdir, get_time_stamp())
     
-    args.logdir = os.path.join(args.logdir, "actors_" + str(args.num_actors)) # To distinguish num of actors using 
+    args.logdir = os.path.join(args.logdir, "actors_" + str(args.num_actors) + "_seed_" + str(args.seed)) # To distinguish num of actors using 
 
     args.device = torch.device(args.device)
 

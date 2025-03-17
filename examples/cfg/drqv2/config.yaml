@@ -6,7 +6,7 @@ defaults:
 # task settings
 frame_stack: 3
 action_repeat: 2
-num_train_frames: 3100000
+# num_train_frames: 3100000
 discount: 0.99
 # train settings
 num_seed_frames: 4000
@@ -44,7 +44,7 @@ agent:
   num_expl_steps: 2000
   hidden_dim: 1024
   feature_dim: ${feature_dim}
-  stddev_schedule: 'linear(1.0,0.1,500000)' # ${stddev_schedule}
+  stddev_schedule: ${stddev_schedule} # 'linear(1.0,0.1,500000)'
   stddev_clip: 0.3
 
 hydra:
