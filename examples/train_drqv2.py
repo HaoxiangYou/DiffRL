@@ -66,7 +66,8 @@ class MakeDMfromShac(dm_env.Environment):
         self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
         self.camera_id = 0 # render camera id. 
         self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
-        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/half_cheetah.xml"), 
+        self.dmc_render_model = cfg["params"]["config"]["dmc_render_model"]
+        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
                                             camera_id=0, height=self.render_size, width=self.render_size)
         self.device = cfg["params"]["general"]["device"]
         if hasattr(self.env, 'observation_spec'):
@@ -125,6 +126,8 @@ class MakeDMfromShac(dm_env.Environment):
     
     def render(self):
         mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
+        # self.dmc_render.render(mujoco_joint_q, self.render_kwargs)
+        # self.env.render(mujoco_joint_q)
         return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
 
 class Workspace:
@@ -145,6 +148,8 @@ class Workspace:
         self._global_episode = 0
         self.time_report = TimeReport()
         self.writer = SummaryWriter(os.path.join(self.work_dir, 'tb'))
+        self.iter_count = 0
+        self.step_count = 0
 
     def setup(self):
         # create logger
@@ -227,7 +232,6 @@ class Workspace:
 
         # add timers
         self.time_report.add_timer("algorithm")
-        self.time_report.add_timer("prepare critic dataset")
         self.time_report.add_timer("actor training")
         self.time_report.add_timer("critic training")
         
@@ -247,7 +251,6 @@ class Workspace:
         self.train_video_recorder.init(time_step.observation)
         metrics = None
 
-        import pdb; pdb.set_trace()
         while train_until_step(self.global_step):
             if time_step.last():
                 self._global_episode += 1
@@ -288,11 +291,15 @@ class Workspace:
                 action = self.agent.act(time_step.observation,
                                         self.global_step,
                                         eval_mode=False)
-            
+
             # try to update the agent
             if not seed_until_step(self.global_step):
                 metrics = self.agent.update(self.replay_iter, self.global_step)
                 # self.logger.log_metrics(metrics, self.global_frame, ty='train')
+            # import pdb; pdb.set_trace()
+            # logging
+            time_elapse = time.time() - self.start_time
+            # self.writer.add_scalar('lr/iter', lr, self.iter_count)
 
             # take env step
             time_step = self.train_env.step(action)
@@ -301,6 +308,9 @@ class Workspace:
             self.train_video_recorder.record(time_step.observation)
             episode_step += 1
             self._global_step += 1
+        
+        self.time_report.end_timer("algorithm")
+        self.time_report.report()
 
     def save_snapshot(self):
         snapshot = self.work_dir / 'snapshot.pt'

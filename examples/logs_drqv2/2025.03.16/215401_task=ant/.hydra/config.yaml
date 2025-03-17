@@ -1,0 +1,93 @@
+frame_stack: 3
+action_repeat: 2
+num_train_frames: 3100000
+discount: 0.99
+num_seed_frames: 4000
+eval_every_frames: 10000
+num_eval_episodes: 10
+save_snapshot: false
+replay_buffer_size: 1000000
+replay_buffer_num_workers: 4
+nstep: 3
+batch_size: 256
+seed: 1
+device: cuda
+save_video: true
+save_train_video: false
+use_tb: true
+experiment: exp
+lr: 0.0001
+feature_dim: 50
+agent:
+  _target_: drqv2.DrQV2Agent
+  obs_shape: ???
+  action_shape: ???
+  device: ${device}
+  lr: ${lr}
+  critic_target_tau: 0.01
+  update_every_steps: 2
+  use_tb: ${use_tb}
+  num_expl_steps: 2000
+  hidden_dim: 1024
+  feature_dim: ${feature_dim}
+  stddev_schedule: linear(1.0,0.1,500000)
+  stddev_clip: 0.3
+params:
+  diff_env:
+    name: AntEnv
+    stochastic_env: true
+    episode_length: 1000
+    MM_caching_frequency: 16
+  network:
+    actor: ActorStochasticMLP
+    actor_mlp:
+      units:
+      - 128
+      - 64
+      - 32
+      activation: elu
+    critic: CriticMLP
+    critic_mlp:
+      units:
+      - 64
+      - 64
+      activation: elu
+  general:
+    device: cuda:0
+    render: false
+    seed: 0
+    train: true
+  config:
+    name: df_ant_dva
+    dmc_render_model: ant
+    actor_learning_rate: 0.002
+    critic_learning_rate: 0.002
+    lr_schedule: linear
+    target_critic_alpha: 0.2
+    state_obs_rms: true
+    ret_rms: false
+    critic_iterations: 16
+    critic_method: td-lambda
+    lambda: 0.95
+    num_batch: 4
+    gamma: 0.99
+    betas:
+    - 0.7
+    - 0.95
+    max_epochs: 2000
+    steps_num: 32
+    grad_norm: 1.0
+    truncate_grads: true
+    num_actors: 1
+    vis_obs: true
+    img_height: 84
+    img_width: 84
+    img_aug: false
+    img_aug_padding: 4
+    save_interval: 400
+    player:
+      determenistic: true
+      games_num: 1
+      num_actors: 1
+      print_stats: true
+      render_mode: dmc

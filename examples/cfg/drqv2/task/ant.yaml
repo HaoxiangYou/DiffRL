@@ -20,9 +20,11 @@ params:
     device: cuda:0
     render: False 
     seed: 0
-
+    train: True
+    
   config:
     name: df_ant_dva
+    dmc_render_model: ant
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 2e-3 # adam
     lr_schedule: linear # ['constant', 'linear']

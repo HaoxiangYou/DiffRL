@@ -15,9 +15,14 @@ params:
     critic_mlp:
       units: [128, 128]
       activation: elu
-
+  general:
+    device: cuda:0
+    render: False 
+    seed: 0
+    train: True
   config:
     name: df_humanoid_dva
+    dmc_render_model: humanoid
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 5e-4 # adam
     lr_schedule: linear # ['constant', 'linear']
@@ -34,11 +39,9 @@ params:
     steps_num: 32
     grad_norm: 1.0 
     truncate_grads: True
-    num_actors: 64 
+    num_actors: 1 
     # visual observation related
     vis_obs: True
-    img_height: 84
-    img_width: 84
     img_height: 84
     img_width: 84
     img_aug: False

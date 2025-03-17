@@ -24,6 +24,7 @@ params:
 
   config:
     name: df_cheetah_dva
+    dmc_render_model: half_cheetah
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 2e-3 # adam
     lr_schedule: linear # ['constant', 'linear']

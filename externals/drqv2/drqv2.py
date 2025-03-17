@@ -227,7 +227,7 @@ class DrQV2Agent:
 
         return metrics
 
-    def update(self, replay_iter, step):
+    def update(self, replay_iter, step, time_report=None):
         metrics = dict()
 
         if step % self.update_every_steps != 0:
@@ -249,11 +249,18 @@ class DrQV2Agent:
             metrics['batch_reward'] = reward.mean().item()
 
         # update critic
+        if time_report:
+            self.time_report.start_timer("actor training")
         metrics.update(
             self.update_critic(obs, action, reward, discount, next_obs, step))
-
+        if time_report:
+            self.time_report.end_timer("actor training")
         # update actor
+        if time_report:
+            self.time_report.start_timer("critic training")
         metrics.update(self.update_actor(obs.detach(), step))
+        if time_report:
+            self.time_report.start_timer("critic training")
 
         # update critic target
         utils.soft_update_params(self.critic, self.critic_target,
