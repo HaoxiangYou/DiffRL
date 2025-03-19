@@ -39,6 +39,11 @@ params:
     vis_obs: True
     img_height: 84
     img_width: 84
+    policy_update_method: trajopt-supervised # ['gradient-descent', 'trajopt-supervised'] 
+    trajopt_learning_rate: 1e-2 # only valid when 'policy_update_method' = 'trajopt-supervised'
+    actor_supervised_iterations: 1
+    img_aug: False # only valid when 'vis_obs' = True and 'policy_update_method' = 'trajopt-supervised'
+    img_aug_padding: 4 # only valid when 'img_aug' = True, 'vis_obs' = True and 'policy_update_method' = 'trajopt-supervised'
     img_aug: False
     img_aug_padding: 4
     save_interval: 400

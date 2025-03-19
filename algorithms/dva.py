@@ -100,6 +100,7 @@ class DVA:
         self.policy_update_method = cfg["params"]["config"].get("policy_update_method", "gradient-descent")
         if self.policy_update_method == "trajopt-supervised":
             self.trajopt_lr = float(cfg["params"]["config"]["trajopt_learning_rate"])
+            self.actor_supervised_iterations = cfg["params"]["config"].get("actor_supervised_iterations", 1)
 
         if cfg['params']['general']['train']:
             self.log_dir = cfg["params"]["general"]["logdir"]
@@ -381,7 +382,7 @@ class DVA:
         def compute_supervised_loss(batch_sample):
             obs = batch_sample["obs"]
             if self.enable_img_aug:
-                obs = self.aug(obs)
+                obs = self.aug(obs.float())
             if isinstance(self.actor, ActorStochasticMLP):
                 if self.enable_vis_obs:
                     predicted_actions = self.actor.mu_net(self.actor.encoder(obs)) + batch_sample["action_eps"] * self.actor.logstd.exp()
@@ -420,29 +421,31 @@ class DVA:
 
         dataset = ActorSupervisedDataset(batch_zie=self.batch_size, obs=obs_buf, target_actions=torch.stack(actions).view(-1, self.num_actions), action_eps=action_eps)
         total_supervised_loss = 0
-        # NOTE currently still using full batch for single update
-        self.actor_optimizer.zero_grad()
-        batch_cnt = 0
-        for i in range(len(dataset)):
-            batch_cnt += 1
-            batch_sample = dataset[i]
-            actor_supervised_loss = compute_supervised_loss(batch_sample)
-            actor_supervised_loss.backward()
-            total_supervised_loss += (actor_supervised_loss.detach().cpu().item() * (self.trajopt_lr))
-        
-        with torch.no_grad():
-            self.grad_norm_before_clip = tu.grad_norm(self.actor.parameters())
-            if self.truncate_grad:
-                clip_grad_norm_(self.actor.parameters(), self.grad_norm)
-            self.grad_norm_after_clip = tu.grad_norm(self.actor.parameters()) 
+        for i in range(self.actor_supervised_iterations):    
+            # NOTE currently still using full batch for single update
+            self.actor_optimizer.zero_grad()
+            for j in range(len(dataset)):
+                batch_sample = dataset[j]
+                actor_supervised_loss = compute_supervised_loss(batch_sample)
+                actor_supervised_loss /= len(dataset)
+                actor_supervised_loss.backward()
+                total_supervised_loss += (actor_supervised_loss.detach().cpu().item() * (self.trajopt_lr))
             
-            # sanity check
-            if torch.isnan(self.grad_norm_before_clip) or self.grad_norm_before_clip > 1000000.:
-                print('NaN gradient')
-                raise ValueError
+            with torch.no_grad():
+                self.grad_norm_before_clip = tu.grad_norm(self.actor.parameters())
+                if self.truncate_grad:
+                    clip_grad_norm_(self.actor.parameters(), self.grad_norm)
+                self.grad_norm_after_clip = tu.grad_norm(self.actor.parameters()) 
+                
+                # sanity check
+                if torch.isnan(self.grad_norm_before_clip) or self.grad_norm_before_clip > 1000000.:
+                    print('NaN gradient')
+                    raise ValueError
 
-        self.actor_supervised_loss = total_supervised_loss / batch_cnt 
-        self.actor_optimizer.step()
+            self.actor_optimizer.step()
+            
+        self.actor_supervised_loss = total_supervised_loss / (self.actor_supervised_iterations) 
+        
         self.time_report.end_timer("actor supervised training")
         self.time_report.end_timer("compute actor loss")
         
