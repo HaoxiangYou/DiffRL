@@ -1,22 +1,21 @@
 num_train_frames: 3100000
 stddev_schedule: 'linear(1.0,0.1,500000)'
-
 params:  
   diff_env:
-    name: CheetahEnv
+    name: HopperEnv
     stochastic_env: True
     episode_length: 1000
     MM_caching_frequency: 16
-    
+
   network:
-    actor: ActorStochasticMLP # ActorDeterministicMLP
+    actor: ActorStochasticMLP
     actor_mlp:
       units: [128, 64, 32]
       activation: elu
 
     critic: CriticMLP
     critic_mlp:
-      units: [64, 64] 
+      units: [64, 64]
       activation: elu
   
   general:
@@ -26,16 +25,15 @@ params:
     train: True
 
   config:
-    name: df_cheetah_dva
-    dmc_render_model: half_cheetah
+    name: df_hopper_dva
     actor_learning_rate: 2e-3 # adam
-    critic_learning_rate: 2e-3 # adam
+    critic_learning_rate: 2e-4 # adam
     lr_schedule: linear # ['constant', 'linear']
-    target_critic_alpha: 0.2
+    target_critic_alpha: 0.2 
     state_obs_rms: True
     ret_rms: False
     critic_iterations: 16
-    critic_method: td-lambda # ['td-lambda', 'one-step']
+    critic_method: td-lambda
     lambda: 0.95
     num_batch: 4
     gamma: 0.99
@@ -44,9 +42,9 @@ params:
     steps_num: 32
     grad_norm: 1.0 
     truncate_grads: True
-    num_actors: 1
+    num_actors: 256
     # visual observation related
-    vis_obs: True
+    vis_obs: False
     img_height: 84
     img_width: 84
     img_aug: False
@@ -54,7 +52,7 @@ params:
     save_interval: 400
 
     player:
-      determenistic: True
+      determenistic: False
       games_num: 1
       num_actors: 1
       print_stats: True

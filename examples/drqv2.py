@@ -83,7 +83,6 @@ class Actor(nn.Module):
 
     def forward(self, obs, std):
         h = self.trunk(obs)
-
         mu = self.policy(h)
         mu = torch.tanh(mu)
         std = torch.ones_like(mu) * std
@@ -162,7 +161,12 @@ class DrQV2Agent:
 
     def act(self, obs, step, eval_mode):
         obs = torch.as_tensor(obs, device=self.device)
-        obs = self.encoder(obs.unsqueeze(0))
+        if len(obs.shape) == 3:
+            obs = self.encoder(obs.unsqueeze(0))
+        elif len(obs.shape) == 4:
+            obs = self.encoder(obs)
+        else:
+            raise Exception("obs shape should be either 3 or 4")
         stddev = utils.schedule(self.stddev_schedule, step)
         dist = self.actor(obs, stddev)
         if eval_mode:
@@ -171,7 +175,7 @@ class DrQV2Agent:
             action = dist.sample(clip=None)
             if step < self.num_expl_steps:
                 action.uniform_(-1.0, 1.0)
-        return action.cpu().numpy()[0]
+        return action.cpu().numpy()
 
     def update_critic(self, obs, action, reward, discount, next_obs, step):
         metrics = dict()
@@ -234,8 +238,8 @@ class DrQV2Agent:
 
         batch = next(replay_iter)
         obs, action, reward, discount, next_obs = utils.to_torch(
-            batch, self.device)
-
+            batch, self.device) # obs: batch_size * 9 * 84 * 84
+        
         # augment
         obs = self.aug(obs.float())
         next_obs = self.aug(next_obs.float())

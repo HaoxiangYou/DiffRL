@@ -20,11 +20,13 @@ params:
     critic_mlp:
       units: [128, 128]
       activation: elu
+  
   general:
     device: cuda:0
     render: False 
     seed: 0
     train: True
+  
   config:
     name: df_humanoid_dva
     dmc_render_model: humanoid

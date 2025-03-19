@@ -5,7 +5,7 @@ defaults:
 
 # task settings
 frame_stack: 3
-action_repeat: 2
+action_repeat: 1
 # num_train_frames: 3100000
 discount: 0.99
 # train settings
