@@ -6,7 +6,7 @@
 # license agreement from NVIDIA CORPORATION is strictly prohibited.
 
 from dflex.sim import *
-from dflex.render import *
+# from dflex.render import *
 from dflex.adjoint import compile
 
 from dflex.util import *
