@@ -66,6 +66,8 @@ class MakeDMfromShac(dm_env.Environment):
         print('num_actions = ', self.env.num_actions)
         print('num_state_obs = ', self.env.num_state_obs)
         print('num_vis_obs =', self.env.num_vis_obs)
+        self.num_envs = self.env.num_envs
+        self.num_actions = self.env.num_actions
         self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
         self.camera_id = 0 # render camera id. 
         self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
@@ -85,7 +87,7 @@ class MakeDMfromShac(dm_env.Environment):
         if hasattr(self.env, 'action_spec'):
             self._action_spec = self._env.action_spec()
         else:
-            self._action_spec = specs.BoundedArray((self.env.num_actions,),
+            self._action_spec = specs.BoundedArray((self.env.num_actions, ),
                                                    minimum=-1,
                                                    maximum=1,
                                                    dtype='float32',
@@ -103,10 +105,10 @@ class MakeDMfromShac(dm_env.Environment):
         # vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu(),dtype="uint8")
         if self.eval==True:
             vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
-            return dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
+            return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
                                 reward=None,
                                 discount=1.0,
-                                observation=vis_obs)
+                                observation=vis_obs)]
         else:
             vis_obs_batch = (obs["vis_obs"]).detach().cpu().numpy().astype("uint8")
             return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
@@ -121,10 +123,10 @@ class MakeDMfromShac(dm_env.Environment):
         self.raw_rew[:] = rew_batch.detach().cpu().numpy()
         if self.eval==True:
             vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
-            return dm_env.TimeStep(step_type=dm_env.StepType.MID if not done_batch else dm_env.StepType.LAST,
+            return [dm_env.TimeStep(step_type=dm_env.StepType.MID if not done_batch else dm_env.StepType.LAST,
                                reward=rew_batch.detach().cpu().item(),
                                discount=1.0,
-                               observation=vis_obs)
+                               observation=vis_obs)]
         else:
             vis_obs_batch = (obs["vis_obs"]).detach().cpu().numpy().astype("uint8")
             return [dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
@@ -176,7 +178,7 @@ class Workspace:
             (self.num_envs, 9, self.img_height , self.img_width ), device=self.device, dtype=torch.uint8, requires_grad=False)
         self.iter_count = 0
         self.step_count = 0
-        self._current_episodes = [defaultdict(list)] * self.num_envs
+        self._current_episodes = [copy.deepcopy(defaultdict(list)) for _ in range(self.num_envs)]
         self.episode_loss_his = []
         self.episode_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
         self.episode_loss_meter = AverageMeter(1, 100).to(self.device)
@@ -193,8 +195,13 @@ class Workspace:
         self.train_env = dmc.make_from_shac(train_env, self.cfg, False)
         self.eval_env = dmc.make_from_shac(eval_env, self.cfg, True)
         # create replay buffer
+        action_spec = specs.BoundedArray((self.train_env.num_actions, ),
+                                                   minimum=-1,
+                                                   maximum=1,
+                                                   dtype='float32',
+                                                   name='action')
         self.data_specs = (self.train_env.observation_spec(),
-                      self.train_env.action_spec(),
+                      action_spec, # self.train_env.action_spec(),
                       specs.Array((1,), np.float32, 'reward'),
                       specs.Array((1,), np.float32, 'discount'))
 
@@ -234,42 +241,47 @@ class Workspace:
     def eval(self):
         step, episode, total_reward = 0, 0, 0
         eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
-
         while eval_until_episode(episode):
             time_step = self.eval_env.reset(env_ids = None, force_reset = True)
             self.video_recorder.init(self.eval_env, enabled=(episode == 0))
-            while not time_step.last():
+            while not time_step[0].last():
                 with torch.no_grad(), utils.eval_mode(self.agent):
-                    action = self.agent.act(time_step.observation,
+                    action = self.agent.act(time_step[0].observation,
                                             self.global_step,
                                             eval_mode=True)
                 time_step = self.eval_env.step(action)
                 self.video_recorder.record(self.eval_env)
-                total_reward += time_step.reward
+                total_reward += time_step[0].reward
                 step += 1
             episode += 1
-            self.video_recorder.save(f'{self.global_frame}.mp4')
+            self.video_recorder.save(f'{self.step_count}.mp4')
 
     def process_time_steps(self, store_time_steps):
         done_ids = []
         for idx, time_step in enumerate(store_time_steps):
-                # store the observation 
-                for spec in self.data_specs:
-                    self._current_episodes[idx][spec.name].append(time_step[spec.name])
-                if time_step.last():
-                    done_ids.append(idx)
-                    # if the current episode ends, we store the episode 
-                    episode = dict()
-                    for spec in self.data_specs:
-                        value = self._current_episodes[idx][spec.name]
-                        episode[spec.name] = np.array(value, spec.dtype)
-                        # we only save episodes that finished
-                        self._current_episodes[idx] = defaultdict(list)
-                        self.replay_storage._store_episode(episode)
-        # Then append initial state to the finished episodes
-        for id in done_ids:
+            # store the observation 
             for spec in self.data_specs:
-                    self._current_episodes[id][spec.name].append(store_time_steps[spec.name])
+                value = time_step[spec.name]
+                if np.isscalar(value):
+                    value = np.full(spec.shape, value, spec.dtype)
+                assert spec.shape == value.shape and spec.dtype == value.dtype
+                self._current_episodes[idx][spec.name].append(value)
+            if time_step.last():
+                done_ids.append(idx)
+                # if the current episode ends, we store the episode 
+                episode = dict()
+                for spec in self.data_specs:
+                    value = self._current_episodes[idx][spec.name]
+                    episode[spec.name] = np.array(value, spec.dtype)
+                    # we only save episodes that finished
+                # import pdb; pdb.set_trace()
+                self._current_episodes[idx] = copy.deepcopy(defaultdict(list))
+                self.replay_storage._store_episode(episode)
+        
+        # Then append initial state to the finished episodes
+        # for id in done_ids:
+        #     for spec in self.data_specs:
+        #             self._current_episodes[id][spec.name].append(store_time_steps[id][spec.name])
         
         # Finally, process the reward for logging
         with torch.no_grad():
@@ -282,6 +294,7 @@ class Workspace:
                             raise ValueError
                         self.episode_loss_his.append(self.episode_loss[done_env_id].item())
                         self.episode_loss[done_env_id] = 0.
+        self._global_episode += len(done_ids)
 
     def train(self):
         # predicates
@@ -306,7 +319,7 @@ class Workspace:
 
         while train_until_step(self.global_step):
             # try to evaluate
-            if eval_every_step(self.global_step):
+            if eval_every_step(self.step_count):
                 self.eval()
 
             # sample action
@@ -322,14 +335,14 @@ class Workspace:
                 metrics = self.agent.update(self.replay_iter, self.global_step)
                 self.save_snapshot()
 
-            # take env step
+            # take env step       
             time_steps = self.train_env.step(action)
             episode_reward += np.sum([time_step.reward for time_step in time_steps])
             self.process_time_steps(time_steps)
-            self.step_count += self.num_envs
-
+            self.step_count += self.num_envs * self.cfg.action_repeat
             episode_step += 1
-            self._global_step += 1
+
+            self._global_step += self.num_envs
             
             # logging
             time_elapse = time.time() - self.start_time
@@ -337,7 +350,8 @@ class Workspace:
                 mean_policy_loss = self.episode_loss_meter.get_mean()
                 self.writer.add_scalar('rewards/step', -mean_policy_loss, self.step_count)
                 self.writer.add_scalar('rewards/time', -mean_policy_loss, time_elapse)
-                self.writer.add_scalar('rewards/iter', -mean_policy_loss, self.global_episode)
+                self.writer.add_scalar('rewards/iter', -mean_policy_loss, episode_step)
+
             self.writer.flush()
         
         self.time_report.end_timer("algorithm")

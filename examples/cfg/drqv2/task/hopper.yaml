@@ -26,6 +26,7 @@ params:
 
   config:
     name: df_hopper_dva
+    dmc_render_model: hopper
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 2e-4 # adam
     lr_schedule: linear # ['constant', 'linear']

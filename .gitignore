@@ -166,3 +166,6 @@ kernels/
 logs/
 
 outputs/
+
+examples/logs/
+examples/logs_drqv2/

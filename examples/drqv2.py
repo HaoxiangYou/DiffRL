@@ -235,7 +235,7 @@ class DrQV2Agent:
 
         if step % self.update_every_steps != 0:
             return metrics
-
+        
         batch = next(replay_iter)
         obs, action, reward, discount, next_obs = utils.to_torch(
             batch, self.device) # obs: batch_size * 9 * 84 * 84

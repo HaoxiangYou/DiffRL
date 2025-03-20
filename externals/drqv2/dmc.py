@@ -117,7 +117,36 @@ class ActionScaleWrapper(dm_env.Environment):
   def __getattr__(self, name):
     return getattr(self._env, name)
 
+class ActionRepeatMultiEnvsWrapper(dm_env.Environment):
+    def __init__(self, env, num_repeats):
+        self._env = env
+        self._num_repeats = num_repeats
 
+    def step(self, action):
+        reward = np.zeros(self._env.num_envs, np.float32)
+        discount = np.ones(self._env.num_envs, np.float32)
+        for i in range(self._num_repeats):
+            time_steps = self._env.step(action)
+            for j, time_step in enumerate(time_steps):
+                reward[j] += (time_step.reward or 0.0) * discount[j]
+                discount[j] *= time_step.discount
+                if time_step.last():
+                    break
+
+        return [time_step._replace(reward=reward[idx], discount=discount[idx]) for idx, time_step in enumerate(time_steps)]
+
+    def observation_spec(self):
+        return self._env.observation_spec()
+
+    def action_spec(self):
+        return self._env.action_spec()
+
+    def reset(self, env_ids = None, force_reset = True):
+        return self._env.reset(env_ids, force_reset)
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+    
 class ActionRepeatWrapper(dm_env.Environment):
     def __init__(self, env, num_repeats):
         self._env = env
@@ -308,12 +337,12 @@ class ExtendedTimeStepMultiEnvsWrapper(dm_env.Environment):
     def _augment_time_step(self, time_step_list, action=None):
         if action is None:
             action_spec = self.action_spec()
-            action = np.zeros(action_spec.shape, dtype=action_spec.dtype)
+            action = np.zeros((self._env.num_envs, self._env.num_actions), dtype=action_spec.dtype)
         return [ExtendedTimeStep(observation=time_step.observation,
                                 step_type=time_step.step_type,
-                                action=action,
+                                action=action[idx],
                                 reward=time_step.reward or 0.0,
-                                discount=time_step.discount or 1.0) for time_step in time_step_list]
+                                discount=time_step.discount or 1.0) for idx, time_step in enumerate(time_step_list)]
 
     def observation_spec(self):
         return self._env.observation_spec()
@@ -330,12 +359,13 @@ def make_from_shac(env, cfg, eval=False):
     # seed = cfg.seed 
     env = ActionDTypeWrapper(env, np.float32)
     # env = ActionRepeatWrapper(env, action_repeat)
+    env = ActionRepeatMultiEnvsWrapper(env, action_repeat)
     env = ActionScaleWrapper(env, minimum=-1.0, maximum=+1.0)
     # zoom in camera for quadruped
     # stack several frames
     # env = FrameStackWrapper(env, frame_stack, pixels_key)
-    if eval:
-        env = ExtendedTimeStepWrapper(env)
-    else:
-        env = ExtendedTimeStepMultiEnvsWrapper(env)
+    # if eval:
+    #     env = ExtendedTimeStepWrapper(env)
+    # else:
+    env = ExtendedTimeStepMultiEnvsWrapper(env)
     return env
