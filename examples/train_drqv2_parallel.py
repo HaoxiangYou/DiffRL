@@ -309,7 +309,7 @@ class Workspace:
         eval_every_step = utils.Every(self.cfg.eval_every_frames,
                                       self.cfg.action_repeat)
 
-        episode_step, episode_reward = 0, 0
+        actor_step, episode_step, episode_reward = 0, 0, 0
         time_steps = self.train_env.reset(env_ids = None, force_reset = True)
         self.process_time_steps(time_steps)
 
@@ -331,6 +331,7 @@ class Workspace:
             if self._global_episode // 10 > 0:
                 metrics = self.agent.update(self.replay_iter, self.global_step)
                 self.save_snapshot()
+                actor_step += 1
 
             # take env step       
             time_steps = self.train_env.step(action)
@@ -347,7 +348,7 @@ class Workspace:
                 mean_policy_loss = self.episode_loss_meter.get_mean()
                 self.writer.add_scalar('rewards/step', -mean_policy_loss, self.step_count)
                 self.writer.add_scalar('rewards/time', -mean_policy_loss, time_elapse)
-                self.writer.add_scalar('rewards/iter', -mean_policy_loss, episode_step)
+                self.writer.add_scalar('rewards/iter', -mean_policy_loss, actor_step)
 
             self.writer.flush()
         
