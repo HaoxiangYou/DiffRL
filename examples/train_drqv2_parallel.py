@@ -171,6 +171,7 @@ class Workspace:
         self.timer = utils.Timer()
         self._global_step = 0
         self._global_episode = 0
+        self._num_episode_finished = 0
         self.time_report = TimeReport()
         self.writer = SummaryWriter(os.path.join(self.work_dir, 'tb'))
         self.episode_loss_meter = AverageMeter(1, 100).to(self.device)
@@ -326,7 +327,8 @@ class Workspace:
                                         eval_mode=False)
             
             # try to update the agent
-            if not seed_until_step(self.global_step):
+            # if not seed_until_step(self.global_step):
+            if self._global_episode // 10 > 0:
                 metrics = self.agent.update(self.replay_iter, self.global_step)
                 self.save_snapshot()
 
