@@ -64,6 +64,8 @@ class MakeDMfromShac(dm_env.Environment):
         print('num_actions = ', self.env.num_actions)
         print('num_state_obs = ', self.env.num_state_obs)
         print('num_vis_obs =', self.env.num_vis_obs)
+        self.num_envs = self.env.num_envs
+        self.num_actions = self.env.num_actions
         self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
         self.camera_id = 0 # render camera id. 
         self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
@@ -93,10 +95,10 @@ class MakeDMfromShac(dm_env.Environment):
         if hasattr(self.env, 'discount_spec'):
             self._discount_spec = self.env.discount_spec()
 
-    def reset(self):
+    def reset(self, env_ids = None, force_reset = True):
         # return stacked observation (9 * width * height)
         self.env.clear_grad()
-        obs = self.env.reset()
+        obs = self.env.reset(env_ids = None, force_reset = True)
         # vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu(),dtype="uint8")
         vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
         return dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 

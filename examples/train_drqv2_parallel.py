@@ -104,13 +104,13 @@ class MakeDMfromShac(dm_env.Environment):
         obs = self.env.reset(env_ids, force_reset)
         # vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu(),dtype="uint8")
         if self.eval==True:
-            vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
+            vis_obs = np.squeeze((obs["vis_obs"]).detach().clone().cpu().numpy()).astype("uint8")
             return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
                                 reward=None,
                                 discount=1.0,
                                 observation=vis_obs)]
         else:
-            vis_obs_batch = (obs["vis_obs"]).detach().cpu().numpy().astype("uint8")
+            vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
             return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
                                reward=None,
                                discount=1.0,
@@ -120,17 +120,17 @@ class MakeDMfromShac(dm_env.Environment):
     def step(self, action):
         obs, rew_batch, done_batch, extra_info = self.env.step(torch.tanh(torch.tensor(action, dtype = torch.float32, device = self.device)))
         del extra_info
-        self.raw_rew[:] = rew_batch.detach().cpu().numpy()
+        self.raw_rew[:] = rew_batch.detach().clone().cpu().numpy()
         if self.eval==True:
-            vis_obs = np.squeeze((obs["vis_obs"]).detach().cpu().numpy()).astype("uint8")
+            vis_obs = np.squeeze((obs["vis_obs"]).detach().clone().cpu().numpy()).astype("uint8")
             return [dm_env.TimeStep(step_type=dm_env.StepType.MID if not done_batch else dm_env.StepType.LAST,
-                               reward=rew_batch.detach().cpu().item(),
+                               reward=rew_batch.detach().clone().cpu().item(),
                                discount=1.0,
                                observation=vis_obs)]
         else:
-            vis_obs_batch = (obs["vis_obs"]).detach().cpu().numpy().astype("uint8")
+            vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
             return [dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
-                                reward=rew.detach().cpu().item(),
+                                reward=rew.detach().clone().cpu().item(),
                                 discount=1.0,
                                 observation=vis_obs) for (vis_obs, rew, done) in zip(vis_obs_batch, rew_batch, done_batch)]
     
@@ -278,22 +278,17 @@ class Workspace:
                 self._current_episodes[idx] = copy.deepcopy(defaultdict(list))
                 self.replay_storage._store_episode(episode)
         
-        # Then append initial state to the finished episodes
-        # for id in done_ids:
-        #     for spec in self.data_specs:
-        #             self._current_episodes[id][spec.name].append(store_time_steps[id][spec.name])
-        
         # Finally, process the reward for logging
         with torch.no_grad():
             self.episode_loss -= torch.tensor(self.train_env.raw_rew, dtype=torch.float32, device=self.device)
             if len(done_ids)>0:
                 self.episode_loss_meter.update(self.episode_loss[done_ids])
                 for done_env_id in done_ids:
-                        if (self.episode_loss[done_env_id] > 1e6 or self.episode_loss[done_env_id] < -1e6):
-                            print('ep loss error')
-                            raise ValueError
-                        self.episode_loss_his.append(self.episode_loss[done_env_id].item())
-                        self.episode_loss[done_env_id] = 0.
+                    if (self.episode_loss[done_env_id] > 1e6 or self.episode_loss[done_env_id] < -1e6):
+                        print('ep loss error')
+                        raise ValueError
+                    self.episode_loss_his.append(self.episode_loss[done_env_id].item())
+                    self.episode_loss[done_env_id] = 0.
         self._global_episode += len(done_ids)
 
     def train(self):
@@ -308,7 +303,7 @@ class Workspace:
 
         train_until_step = utils.Until(self.cfg.num_train_frames,
                                        self.cfg.action_repeat)
-        seed_until_step = utils.Until(self.cfg.num_seed_frames,
+        seed_until_step = utils.Until(self.cfg.num_seed_frames * self.num_envs,
                                       self.cfg.action_repeat)
         eval_every_step = utils.Every(self.cfg.eval_every_frames,
                                       self.cfg.action_repeat)
@@ -329,7 +324,7 @@ class Workspace:
                 action = self.agent.act(self.vis_obs_buffer,
                                         self.global_step,
                                         eval_mode=False)
-
+            
             # try to update the agent
             if not seed_until_step(self.global_step):
                 metrics = self.agent.update(self.replay_iter, self.global_step)
