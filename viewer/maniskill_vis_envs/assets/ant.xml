@@ -15,19 +15,17 @@
   </default>
   <worldbody>
     <camera name="global"  pos="-10 10 10" xyaxes="-1 -1 0 1 0 1" mode="trackcom"/>
-    <geom name="ground" type="plane" conaffinity="1" pos="0 0 0" size="1000 1000 0.1" material="grid" rgba="1 1 1 1"/>
-    <body name="torso" pos="0 0 0.75">
+
+    <light directional="false" diffuse=".2 .2 .2" specular="0 0 0" pos="0 0 5" dir="0 0 -1" castshadow="false"/>
+    <light mode="targetbodycom" target="torso" directional="false" diffuse=".8 .8 .8" specular="0.3 0.3 0.3" pos="0 0 4.0" dir="0 0 -1"/>
+    
+      <body name="torso" pos="0 0 0">
+      <freejoint name="root"/>
       <geom name="torso_geom" pos="0 0 0" size="0.25" type="sphere"/>
       <geom fromto="0.0 0.0 0.0 0.2 0.2 0.0" name="aux_1_geom" size="0.08" type="capsule" rgba=".999 .2 .1 1"/>
       <geom fromto="0.0 0.0 0.0 -0.2 0.2 0.0" name="aux_2_geom" size="0.08" type="capsule"/>
       <geom fromto="0.0 0.0 0.0 -0.2 -0.2 0.0" name="aux_3_geom" size="0.08" type="capsule"/>
-        <geom fromto="0.0 0.0 0.0 0.2 -0.2 0.0" name="aux_4_geom" size="0.08" type="capsule" rgba=".999 .2 .02 1"/>
-
-      <joint armature="0" damping="0" limited="false" margin="0.01" name="root" pos="0 0 0" type="free"/>
-        <light name="light" pos="0 0 4" mode="trackcom"/>
-        <camera name="x"  pos="-1.7 0 1" xyaxes="0 -1 0 .75 0 1" mode="trackcom"/>
-        <camera name="y" pos="0 -4 2" xyaxes="1 0 0 0 0.5 1" mode="trackcom"/>
-        <camera name="egocentric"  pos=".3 0 .11" xyaxes="0 -1 0 .4 0 1" fovy="60"/>
+      <geom fromto="0.0 0.0 0.0 0.2 -0.2 0.0" name="aux_4_geom" size="0.08" type="capsule" rgba=".999 .2 .02 1"/>
         <body name="front_left_leg" pos="0.2 0.2 0">
           <joint axis="0 0 1" name="hip_1" pos="0.0 0.0 0.0" range="-40 40" type="hinge"/>
           <geom fromto="0.0 0.0 0.0 0.2 0.2 0.0" name="left_leg_geom" size="0.08" type="capsule" rgba=".999 .2 .1 1"/>

@@ -22,6 +22,7 @@ np.set_printoptions(precision=5, linewidth=256, suppress=True)
 from utils import load_utils as lu
 from utils import torch_utils as tu
 from viewer.dmc_viewer import DMCViewer
+from viewer.maniskill_viewer import ManiskillViewer
 
 class HumanoidEnv(DFlexEnv):
 
@@ -40,6 +41,7 @@ class HumanoidEnv(DFlexEnv):
         self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/humanoid.xml"), 
                                     camera_id=0, height=self.obs_img_height, width=self.obs_img_width)
 
+        self.renderer = ManiskillViewer(env_name="HumanoidVis", num_env=num_envs, height=img_height, width=img_width)
 
         # other parameters
         self.termination_height = 0.74
@@ -163,14 +165,9 @@ class HumanoidEnv(DFlexEnv):
     This function render imgs for target envs
     """
     def render(self, env_ids, render_kwargs=None):
-        frames = []
-        if self.dmc_render:
-            mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1)[env_ids]).detach().cpu().numpy()
-            for mujoco_joint_q in mujoco_joint_qs:
-                frames.append(self.dmc_render.render(mujoco_joint_q, render_kwargs))
-            return np.stack(frames)
-        else:
-            raise ValueError("Render is being called without dmc render")
+        mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1))
+        pixels = self.renderer.render(mujoco_joint_qs, render_kwargs=render_kwargs)[env_ids.cpu()].numpy()
+        return pixels
         
     """
     This function render a given trajectory (time sequences of joint_q in shac conventions) in shape (traj_length, num_env, num_q)
