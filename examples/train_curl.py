@@ -1,3 +1,11 @@
+import os
+os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
+os.environ['MUJOCO_GL'] = 'egl'
+
+import sys
+project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_dir)
+
 import numpy as np
 import torch
 import argparse
@@ -11,11 +19,11 @@ import json
 import dmc2gym
 import copy
 
-import utils
-from logger import Logger
-from video import VideoRecorder
+import externals.curl.utils as utils
+from externals.curl.logger import Logger
+from externals.curl.video import VideoRecorder
 
-from curl_sac import CurlSacAgent
+from externals.curl.curl_sac import CurlSacAgent
 from torchvision import transforms
 
 
@@ -86,7 +94,6 @@ def evaluate(env, agent, video, num_episodes, L, step, args):
         for i in range(num_episodes):
             obs = env.reset()
             video.init(enabled=(i == 0))
-            import pdb; pdb.set_trace()
             done = False
             episode_reward = 0
             while not done:
@@ -102,7 +109,6 @@ def evaluate(env, agent, video, num_episodes, L, step, args):
                 video.record(env)
                 episode_reward += reward
             video.save('%d.mp4' % step)
-            import pdb; pdb.set_trace()
             
             L.log('eval/' + prefix + 'episode_reward', episode_reward, step)
             all_ep_rewards.append(episode_reward)
