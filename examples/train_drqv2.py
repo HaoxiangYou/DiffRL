@@ -48,7 +48,8 @@ class MakeDMfromShac(dm_env.Environment):
         self.cfg = cfg
         env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         seeding(cfg["params"]["general"]["seed"])
-        self.env =  env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
+        # cfg["params"]["config"]["num_actors"], \
+        self.env =  env_fn(num_envs = 1, \
                             device = cfg["params"]["general"]["device"], \
                             render = cfg["params"]["general"]["render"], \
                             vis_obs = cfg["params"]["config"].get("vis_obs", False), \
@@ -163,8 +164,8 @@ class Workspace:
         # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         env = MakeDMfromShac(self.cfg)
         self.env = env
-        self.train_env = dmc.make_from_shac(env, self.cfg, True)
-        self.eval_env = dmc.make_from_shac(env, self.cfg, True)
+        self.train_env = dmc.make_from_shac_single_thread(env, self.cfg, True)
+        self.eval_env = dmc.make_from_shac_single_thread(env, self.cfg, True)
 
         # create replay buffer
         data_specs = (self.train_env.observation_spec(),

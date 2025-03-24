@@ -125,13 +125,14 @@ class ActionRepeatMultiEnvsWrapper(dm_env.Environment):
     def step(self, action):
         reward = np.zeros(self._env.num_envs, np.float32)
         discount = np.ones(self._env.num_envs, np.float32)
+        done_flag =np.zeros(self._env.num_envs, np.bool) 
         for i in range(self._num_repeats):
             time_steps = self._env.step(action)
             for j, time_step in enumerate(time_steps):
                 reward[j] += (time_step.reward or 0.0) * discount[j]
                 discount[j] *= time_step.discount
                 if time_step.last():
-                    break
+                    continue
 
         return [time_step._replace(reward=reward[idx], discount=discount[idx]) for idx, time_step in enumerate(time_steps)]
 
@@ -353,7 +354,7 @@ class ExtendedTimeStepMultiEnvsWrapper(dm_env.Environment):
     def __getattr__(self, name):
         return getattr(self._env, name)
 
-def make_from_shac(env, cfg, eval=False):
+def make_from_shac(env, cfg):
     # frame_stack = cfg.frame_stack 
     action_repeat = cfg.action_repeat 
     # seed = cfg.seed 
@@ -368,4 +369,22 @@ def make_from_shac(env, cfg, eval=False):
     #     env = ExtendedTimeStepWrapper(env)
     # else:
     env = ExtendedTimeStepMultiEnvsWrapper(env)
+    return env
+
+def make_from_shac_single_thread(env, cfg):
+    # frame_stack = cfg.frame_stack 
+    action_repeat = cfg.action_repeat 
+    # seed = cfg.seed 
+    env = ActionDTypeWrapper(env, np.float32)
+    env = ActionRepeatWrapper(env, action_repeat)
+    # env = ActionRepeatMultiEnvsWrapper(env, action_repeat)
+    env = ActionScaleWrapper(env, minimum=-1.0, maximum=+1.0)
+    # zoom in camera for quadruped
+    # stack several frames
+    # env = FrameStackWrapper(env, frame_stack, pixels_key)
+    # if eval:
+    #     env = ExtendedTimeStepWrapper(env)
+    # else:
+    # env = ExtendedTimeStepMultiEnvsWrapper(env)
+    env = ExtendedTimeStepWrapper(env)
     return env

@@ -36,6 +36,7 @@ from utils.average_meter import AverageMeter
 import time
 import yaml
 from collections import defaultdict
+from train_drqv2 import MakeDMfromShac as MakeDMfromShacSingleEnv
 
 torch.backends.cudnn.benchmark = True
 
@@ -102,37 +103,22 @@ class MakeDMfromShac(dm_env.Environment):
         # return stacked observation (9 * width * height)
         self.env.clear_grad()
         obs = self.env.reset(env_ids, force_reset)
-        # vis_obs = np.array(torch.squeeze(obs["vis_obs"]).detach().cpu(),dtype="uint8")
-        if self.eval==True:
-            vis_obs = np.squeeze((obs["vis_obs"]).detach().clone().cpu().numpy()).astype("uint8")
-            return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
-                                reward=None,
-                                discount=1.0,
-                                observation=vis_obs)]
-        else:
-            vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
-            return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
-                               reward=None,
-                               discount=1.0,
-                               observation=vis_obs) for vis_obs in vis_obs_batch]
+        vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
+        return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
+                            reward=None,
+                            discount=1.0,
+                            observation=vis_obs) for vis_obs in vis_obs_batch]
          
     
     def step(self, action):
         obs, rew_batch, done_batch, extra_info = self.env.step(torch.tanh(torch.tensor(action, dtype = torch.float32, device = self.device)))
         del extra_info
         self.raw_rew[:] = rew_batch.detach().clone().cpu().numpy()
-        if self.eval==True:
-            vis_obs = np.squeeze((obs["vis_obs"]).detach().clone().cpu().numpy()).astype("uint8")
-            return [dm_env.TimeStep(step_type=dm_env.StepType.MID if not done_batch else dm_env.StepType.LAST,
-                               reward=rew_batch.detach().clone().cpu().item(),
-                               discount=1.0,
-                               observation=vis_obs)]
-        else:
-            vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
-            return [dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
-                                reward=rew.detach().clone().cpu().item(),
-                                discount=1.0,
-                                observation=vis_obs) for (vis_obs, rew, done) in zip(vis_obs_batch, rew_batch, done_batch)]
+        vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
+        return [dm_env.TimeStep(step_type=dm_env.StepType.MID if not done else dm_env.StepType.LAST,
+                            reward=rew.detach().clone().cpu().item(),
+                            discount=1.0,
+                            observation=vis_obs) for (vis_obs, rew, done) in zip(vis_obs_batch, rew_batch, done_batch)]
     
     def observation_spec(self):
         return self._observation_spec
@@ -192,9 +178,11 @@ class Workspace:
         # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         train_env = MakeDMfromShac(self.cfg, False)
         eval_env = MakeDMfromShac(self.cfg, True)
+        test_env = MakeDMfromShacSingleEnv(self.cfg)
         self.env = train_env
         self.train_env = dmc.make_from_shac(train_env, self.cfg, False)
         self.eval_env = dmc.make_from_shac(eval_env, self.cfg, True)
+        self.test_env = dmc.make_from_shac_single_thread(test_env, self.cfg, True)
         # create replay buffer
         action_spec = specs.BoundedArray((self.train_env.num_actions, ),
                                                    minimum=-1,
@@ -291,6 +279,7 @@ class Workspace:
                     self.episode_loss_his.append(self.episode_loss[done_env_id].item())
                     self.episode_loss[done_env_id] = 0.
         self._global_episode += len(done_ids)
+        self._num_episode_finished += len(done_ids)
 
     def train(self):
         # predicates
@@ -317,7 +306,7 @@ class Workspace:
             # try to evaluate
             if eval_every_step(self.step_count):
                 self.eval()
-
+            
             # sample action
             # output action with shape (num_envs, action_size)
             with torch.no_grad(), utils.eval_mode(self.agent):
@@ -327,11 +316,13 @@ class Workspace:
                                         eval_mode=False)
             
             # try to update the agent
-            # if not seed_until_step(self.global_step):
-            if self._global_episode // 10 > 0:
+            if not seed_until_step(self.global_step):
+            # if self._global_episode // 10 > 0:
+            # if self._num_episode_finished > 3:
                 metrics = self.agent.update(self.replay_iter, self.global_step)
                 self.save_snapshot()
                 actor_step += 1
+                self._num_episode_finished = 0
 
             # take env step       
             time_steps = self.train_env.step(action)

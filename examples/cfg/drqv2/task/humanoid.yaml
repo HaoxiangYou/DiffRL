@@ -6,7 +6,7 @@ stddev_schedule: 'linear(1.0,0.1,2000000)'
 params:  
   diff_env:
     name: HumanoidEnv
-    stochastic_env: True
+    stochastic_env: False # True
     episode_length: 1000
     MM_caching_frequency: 48
   
