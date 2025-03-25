@@ -166,7 +166,7 @@ class HumanoidEnv(DFlexEnv):
     """
     def render(self, env_ids, render_kwargs=None):
         mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1))
-        pixels = self.renderer.render(mujoco_joint_qs, render_kwargs=render_kwargs)[env_ids.cpu()].numpy()
+        pixels = self.renderer.render(mujoco_joint_qs, render_kwargs=render_kwargs)[env_ids]
         return pixels
         
     """
@@ -282,7 +282,7 @@ class HumanoidEnv(DFlexEnv):
             if enable_vis_obs:
                 pixels = self.render(env_ids)
                 # three identical images at reset
-                pixels = torch.tile(torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device), (1, 3, 1, 1))
+                pixels = torch.tile(torch.moveaxis(pixels, 3, 1), (1, 3, 1, 1))
                 self.vis_obs_buf[env_ids] = pixels
 
         obs = {"state_obs":self.state_obs_buf}
@@ -380,7 +380,7 @@ class HumanoidEnv(DFlexEnv):
         self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
         # append new images
         pixels = self.render(env_ids)
-        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
+        self.vis_obs_buf[env_ids, 6:, :, :] = torch.moveaxis(pixels, 3, 1)
         
     '''
     This function returns joint_q in mujoco conventions

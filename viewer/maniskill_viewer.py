@@ -39,7 +39,7 @@ class ManiskillViewer:
             self.env.img_width = render_kwargs["width"]
 
         self.env.update_vis(qpos)
-        pixels = self.env.render_sensors()
+        pixels = self.env.render_rgb_array()
 
         self.env.img_height = old_img_height
         self.env.img_width = old_img_width

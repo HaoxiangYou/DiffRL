@@ -28,9 +28,23 @@ class CheetahVisEnv(BaseEnv):
     @property
     def _default_sensor_configs(self):
         return [
-            # replicated from xml file
             CameraConfig(
-                uid="cam0",
+                uid="recording_cam",
+                pose=sapien_utils.look_at(eye=[0, -3, 0], target=[0, 0, 0]),
+                width=256,
+                height=256,
+                fov=np.pi / 4,
+                near=0.01,
+                far=100,
+                mount=self.agent.robot.links_map["torso_dummy_1"],
+            ),
+        ]
+    
+    @property
+    def _default_human_render_camera_configs(self):
+        return [
+            CameraConfig(
+                uid="training_cam",
                 pose=sapien_utils.look_at(eye=[0, -3, 0], target=[0, 0, 0]),
                 width=self.img_width,
                 height=self.img_height,

@@ -34,7 +34,22 @@ class AntVisEnv(BaseEnv):
     def _default_sensor_configs(self):
         return [
             CameraConfig(
-                uid="side_cam",
+                uid="recording_cam",
+                pose=sapien_utils.look_at(eye=[0.5, -2, 1], target=[0, 0, 0]),
+                width=256,
+                height=256,
+                fov=np.pi / 180 * 60,
+                near=0.01,
+                far=100,
+                mount=self.camera_mount,
+            ),
+        ]
+    
+    @property
+    def _default_human_render_camera_configs(self):
+        return [
+            CameraConfig(
+                uid="training_cam",
                 pose=sapien_utils.look_at(eye=[0.5, -2, 1], target=[0, 0, 0]),
                 width=self.img_width,
                 height=self.img_height,

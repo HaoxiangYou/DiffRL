@@ -145,7 +145,7 @@ class DVA:
         # replay buffer
         self.state_buf = torch.zeros((self.steps_num, self.num_envs, self.num_joint_q + self.num_joint_qd), dtype = torch.float32, device = self.device)
         self.state_obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_state_obs), dtype = torch.float32, device = self.device)
-        if self.enable_vis_obs:
+        if self.enable_vis_obs and self.policy_update_method == "trajopt-supervised":
             self.vis_obs_buf = torch.zeros((self.steps_num, self.num_envs) + self.num_vis_obs, dtype=torch.uint8, device = self.device)
         self.rew_buf = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.done_mask = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
@@ -220,7 +220,7 @@ class DVA:
                 self.state_buf[i,:,:self.num_joint_q] = joint_qs
                 self.state_buf[i,:,self.num_joint_q:] = joint_qds
                 self.state_obs_buf[i] = state_obs.clone()
-                if self.enable_vis_obs:
+                if self.enable_vis_obs and self.policy_update_method == "trajopt-supervised":
                     self.vis_obs_buf[i] = vis_obs.clone()
 
             # detach the obs from computation graph
