@@ -167,8 +167,6 @@ def main():
         width=args.pre_transform_image_size,
         frame_skip=args.action_repeat
     )
- 
-    # env.seed(args.seed)
 
     # stack several consecutive frames together
     if args.encoder_type == 'pixel':

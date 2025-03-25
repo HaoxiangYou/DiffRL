@@ -178,11 +178,9 @@ class Workspace:
         # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         train_env = MakeDMfromShac(self.cfg, False)
         eval_env = MakeDMfromShac(self.cfg, True)
-        test_env = MakeDMfromShacSingleEnv(self.cfg)
         self.env = train_env
-        self.train_env = dmc.make_from_shac(train_env, self.cfg, False)
-        self.eval_env = dmc.make_from_shac(eval_env, self.cfg, True)
-        self.test_env = dmc.make_from_shac_single_thread(test_env, self.cfg, True)
+        self.train_env = dmc.make_from_shac(train_env, self.cfg)
+        self.eval_env = dmc.make_from_shac(eval_env, self.cfg)
         # create replay buffer
         action_spec = specs.BoundedArray((self.train_env.num_actions, ),
                                                    minimum=-1,
@@ -243,6 +241,8 @@ class Workspace:
                 total_reward += time_step[0].reward
                 step += 1
             episode += 1
+            if self.eval_env.done_envs.shape[0] > 0:
+                self.eval_env.reset(self.eval_env.done_envs)
             self.video_recorder.save(f'{self.step_count}.mp4')
 
     def process_time_steps(self, store_time_steps):
@@ -293,7 +293,7 @@ class Workspace:
 
         train_until_step = utils.Until(self.cfg.num_train_frames,
                                        self.cfg.action_repeat)
-        seed_until_step = utils.Until(self.cfg.num_seed_frames * self.num_envs,
+        seed_until_step = utils.Until(self.cfg.num_seed_frames,
                                       self.cfg.action_repeat)
         eval_every_step = utils.Every(self.cfg.eval_every_frames,
                                       self.cfg.action_repeat)
@@ -331,6 +331,10 @@ class Workspace:
             self.step_count += self.num_envs * self.cfg.action_repeat
             episode_step += 1
 
+
+            if self.train_env.done_envs.shape[0] > 0:
+                self.train_env.reset(self.train_env.done_envs)
+
             self._global_step += self.num_envs
             
             # logging
@@ -342,7 +346,8 @@ class Workspace:
                 self.writer.add_scalar('rewards/iter', -mean_policy_loss, actor_step)
 
             self.writer.flush()
-        
+
+
         self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.close()

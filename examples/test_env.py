@@ -148,6 +148,11 @@ class Workspace:
             eval_list.append(time_step_eval[0].observation)
             test_list.append(time_step_test.observation)
             
+            if self.train_env.done_envs.shape[0] > 0:
+                self.train_env.reset(self.train_env.done_envs)
+            if self.eval_env.done_envs.shape[0] > 0:
+                self.eval_env.reset(self.eval_env.done_envs)
+
         import pdb; pdb.set_trace()
 
     def save_snapshot(self):

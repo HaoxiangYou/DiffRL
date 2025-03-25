@@ -125,15 +125,24 @@ class ActionRepeatMultiEnvsWrapper(dm_env.Environment):
     def step(self, action):
         reward = np.zeros(self._env.num_envs, np.float32)
         discount = np.ones(self._env.num_envs, np.float32)
-        done_flag =np.zeros(self._env.num_envs, np.bool) 
+        done_envs = {} # this keep track of which envs are done so that we don't repeat them  
         for i in range(self._num_repeats):
             time_steps = self._env.step(action)
             for j, time_step in enumerate(time_steps):
-                reward[j] += (time_step.reward or 0.0) * discount[j]
-                discount[j] *= time_step.discount
-                if time_step.last():
-                    continue
-
+                if j in done_envs.keys():
+                    # Discard the current time_step if the env has reached the end previously
+                    time_steps[j] = done_envs[j]
+                elif time_step.last():
+                    # if the env is done, we will add the time_step to the done_envs
+                    done_envs[j] = time_step
+                    reward[j] += (time_step.reward or 0.0) * discount[j]
+                    discount[j] *= time_step.discount
+                else:
+                    # if the envs is not done, we will add the reward and discount
+                    reward[j] += (time_step.reward or 0.0) * discount[j]
+                    discount[j] *= time_step.discount
+        # store done envs idx for reset purpose
+        self.done_envs = np.array(list(done_envs.keys()), dtype=np.int32)
         return [time_step._replace(reward=reward[idx], discount=discount[idx]) for idx, time_step in enumerate(time_steps)]
 
     def observation_spec(self):
