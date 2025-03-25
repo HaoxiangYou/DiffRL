@@ -27,7 +27,6 @@ def set_seed(seed):
 parser = argparse.ArgumentParser()
 parser.add_argument('--env', type = str, default = 'AntEnv')
 parser.add_argument('--num-envs', type = int, default = 64)
-parser.add_argument('--render', default = False, action = 'store_true')
 
 args = parser.parse_args()
 
@@ -37,7 +36,6 @@ env_fn = getattr(envs, args.env)
 
 env = env_fn(num_envs = args.num_envs, \
             device = 'cuda:0', \
-            render = args.render, \
             seed = 0, \
             stochastic_init = True, \
             MM_caching_frequency = 16, \
