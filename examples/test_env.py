@@ -15,6 +15,7 @@ import hydra
 import numpy as np
 import torch
 import copy
+from tqdm import tqdm
 
 import dm_env
 from dm_env import specs
@@ -121,7 +122,7 @@ class Workspace:
         train_list = []
         eval_list = []
         import pdb
-        for i in range(100):
+        for i in tqdm(range(5000)):
             with torch.no_grad(), utils.eval_mode(self.agent):
                 self.vis_obs_buffer[:] = torch.tensor([time_step.observation for time_step in time_step_eval])
                 action = self.agent.act(self.vis_obs_buffer,
@@ -140,18 +141,22 @@ class Workspace:
             elif not (time_step_test.last() == time_step_train[0].last()):
                 print('test and train envs last are not equal')
                 pdb.set_trace()
+            elif not (time_step_test.last() == time_step_eval[0].last()):
+                print('test and eval envs last are not equal')
+                pdb.set_trace() 
             elif not np.array_equal(time_step_test.observation, time_step_eval[0].observation):
                 print('test and eval envs are not equal')
                 pdb.set_trace()
 
-            train_list.append(time_step_train[0].observation)
-            eval_list.append(time_step_eval[0].observation)
-            test_list.append(time_step_test.observation)
+            # train_list.append(time_step_train[0].observation)
+            # eval_list.append(time_step_eval[0].observation)
+            # test_list.append(time_step_test.observation)
             
             if self.train_env.done_envs.shape[0] > 0:
                 self.train_env.reset(self.train_env.done_envs)
             if self.eval_env.done_envs.shape[0] > 0:
                 self.eval_env.reset(self.eval_env.done_envs)
+            
 
         import pdb; pdb.set_trace()
 

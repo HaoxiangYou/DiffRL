@@ -241,8 +241,8 @@ class Workspace:
                 total_reward += time_step[0].reward
                 step += 1
             episode += 1
-            if self.eval_env.done_envs.shape[0] > 0:
-                self.eval_env.reset(self.eval_env.done_envs)
+            if time_step[0].last():
+                self.eval_env.reset()
             self.video_recorder.save(f'{self.step_count}.mp4')
 
     def process_time_steps(self, store_time_steps):
@@ -263,7 +263,6 @@ class Workspace:
                     value = self._current_episodes[idx][spec.name]
                     episode[spec.name] = np.array(value, spec.dtype)
                     # we only save episodes that finished
-                # import pdb; pdb.set_trace()
                 self._current_episodes[idx] = copy.deepcopy(defaultdict(list))
                 self.replay_storage._store_episode(episode)
         
@@ -278,6 +277,9 @@ class Workspace:
                         raise ValueError
                     self.episode_loss_his.append(self.episode_loss[done_env_id].item())
                     self.episode_loss[done_env_id] = 0.
+                
+                self.train_env.reset(np.array(done_ids, dtype=np.int32))
+        
         self._global_episode += len(done_ids)
         self._num_episode_finished += len(done_ids)
 
@@ -330,10 +332,6 @@ class Workspace:
             self.process_time_steps(time_steps)
             self.step_count += self.num_envs * self.cfg.action_repeat
             episode_step += 1
-
-
-            if self.train_env.done_envs.shape[0] > 0:
-                self.train_env.reset(self.train_env.done_envs)
 
             self._global_step += self.num_envs
             
