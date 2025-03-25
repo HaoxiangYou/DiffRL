@@ -145,7 +145,7 @@ class SHAC:
         self.sigmas = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
 
         # video recorder
-        self.video_recorder = VideoRecorder(fps=int(1/self.env.sim_dt), height=256, width=256, camera_id=self.env.dmc_render.render_kwargs["camera_id"])
+        self.video_recorder = VideoRecorder(fps=int(1/self.env.sim_dt))
 
         # counting variables
         self.iter_count = 0
@@ -599,12 +599,14 @@ class SHAC:
 
     def save_video(self, joint_qs, save_dir=None):
         self.video_recorder.update_save_dir(save_dir)
-        for i in range(joint_qs.shape[1]):
+        frames = self.env.render_traj(joint_qs, recording=True)
+        
+        for i in range(frames.shape[1]):
             self.video_recorder.reset()
-            frames = self.env.render_traj(joint_qs[:,i:i+1,:], self.video_recorder.render_kwargs)
-            for frame in frames:
-                self.video_recorder.append(frame[0])
+            for j in range(frames.shape[0]):
+                self.video_recorder.append(frames[j, i])
             self.video_recorder.save("eval_traj_{}.mp4".format(i))
+        self.video_recorder.stop()
 
     def play(self, cfg):
         self.load(cfg['params']['general']['checkpoint'])

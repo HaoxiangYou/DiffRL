@@ -27,21 +27,14 @@ class ManiskillViewer:
             sensor_configs=dict(shader_pack="default"),
         )
 
-    def render(self, qpos:torch.Tensor, render_kwargs=None):
+    def render(self, qpos:torch.Tensor, recording=False):
         """
         qpos: joint qpos in mujoco conventions
         """
-        old_img_height = self.env.img_height
-        old_img_width = self.env.img_width
-
-        if render_kwargs is not None:
-            self.env.img_height = render_kwargs["height"]
-            self.env.img_width = render_kwargs["width"]
-
         self.env.update_vis(qpos)
-        pixels = self.env.render_rgb_array()
-
-        self.env.img_height = old_img_height
-        self.env.img_width = old_img_width
+        if recording:
+            pixels = self.env.render_sensors()
+        else:
+            pixels = self.env.render_rgb_array()
         
         return pixels

@@ -30,11 +30,11 @@ params:
     num_batch: 4
     gamma: 0.99
     betas: [0.7, 0.95] # adam
-    max_epochs: 4000
+    max_epochs: 1
     steps_num: 32
     grad_norm: 1.0 
     truncate_grads: True
-    num_actors: 64 
+    num_actors: 20 
     # visual observation related
     vis_obs: True
     img_height: 84

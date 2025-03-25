@@ -10,7 +10,6 @@ import xml.etree.ElementTree as ET
 
 from gym import spaces
 from utils.copy_utils import safe_deepcopy
-from viewer.dmc_viewer import DMCViewer
 from viewer.maniskill_viewer import ManiskillViewer
 
 
@@ -118,7 +117,7 @@ class DFlexEnv:
         
         # Iterate through all attributes and handle them
         for k, v in self.__dict__.items():
-            if isinstance(v, DMCViewer) or isinstance(v, ManiskillViewer):
+            if isinstance(v, ManiskillViewer):
                 # If it's a Viewer, create a reference instead of new instance 
                 setattr(new_env, k, v)
             else:
