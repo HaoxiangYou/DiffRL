@@ -67,10 +67,7 @@ def get_args(): # TODO: delve into the arguments
         {"name": "--no-time-stamp", "action": "store_true", "default": False,
             "help": "whether not add time stamp at the log path"},
         {"name": "--device", "type": str, "default": "cuda:0"},
-        {"name": "--seed", "type": int, "default": 0, "help": "Random seed"},
-        {"name": "--render", "action": "store_true", "default": False,
-            "help": "whether generate rendering file."},
-        {"name": "--num_actor", "type": int, "default": 64, "help": "Number of Actors"}]
+        {"name": "--seed", "type": int, "default": 0, "help": "Random seed"}]
     
     # parse arguments
     args = parse_arguments(
@@ -92,7 +89,6 @@ if __name__ == '__main__':
     cfg_train["params"]["network"]["vis_obs"] = cfg_train["params"]["config"].get("vis_obs", False)
     cfg_train["params"]["network"]["img_height"] = cfg_train["params"]["config"].get("img_height", 84)
     cfg_train["params"]["network"]["img_width"] = cfg_train["params"]["config"].get("img_width", 84)
-    cfg_train["params"]["network"]["img_aug_padding"] = cfg_train["params"]["config"].get("img_aug_padding", 4)
 
     if not args.no_time_stamp:
         args.logdir = os.path.join(args.logdir, get_time_stamp())

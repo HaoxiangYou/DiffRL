@@ -21,7 +21,7 @@ np.set_printoptions(precision=5, linewidth=256, suppress=True)
 try:
     from pxr import Usd, UsdGeom, Gf
 except ModuleNotFoundError:
-    print("No pxr package")
+    pass
 
 from utils import load_utils as lu
 from utils import torch_utils as tu

@@ -1,10 +1,3 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
 import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
@@ -12,8 +5,6 @@ import numpy as np
 
 from models import model_utils
 from models.encoder import Encoder
-from utils.image_aug import RandomShiftsAug
-
 
 class ActorDeterministicMLP(nn.Module):
     def __init__(self, state_obs_dim, action_dim, cfg_network, device='cuda:0'):
@@ -26,7 +17,6 @@ class ActorDeterministicMLP(nn.Module):
             vis_obs_dim = (9, cfg_network['img_height'], cfg_network['img_width'])
             self.encoder = Encoder(obs_shape=vis_obs_dim,
                                    output_dim=cfg_network["actor_mlp"]['units'][0])
-            self.aug = RandomShiftsAug(pad=cfg_network.get("img_aug_padding", 4))
             self.layer_dims = [cfg_network["actor_mlp"]['units'][0]] + cfg_network['actor_mlp']['units'] + [action_dim]
         else:
             self.layer_dims = [state_obs_dim] + cfg_network['actor_mlp']['units'] + [action_dim]
@@ -56,10 +46,8 @@ class ActorDeterministicMLP(nn.Module):
         # return self.logstd
         return None
 
-    def forward(self, observations, deterministic = False, img_aug=False):
+    def forward(self, observations, deterministic=False):
         if self.enable_vis_obs:
-            if img_aug:
-                observations = self.aug(observations)
             observations = self.encoder(observations)
 
         return self.actor(observations)
@@ -76,7 +64,6 @@ class ActorStochasticMLP(nn.Module):
             vis_obs_dim = (9, cfg_network['img_height'], cfg_network['img_width'])
             self.encoder = Encoder(obs_shape=vis_obs_dim,
                                    output_dim=cfg_network["actor_mlp"]['units'][0])
-            self.aug = RandomShiftsAug(pad=cfg_network.get("img_aug_padding", 4))
             self.layer_dims = [cfg_network["actor_mlp"]['units'][0]] + cfg_network['actor_mlp']['units'] + [action_dim]
         else:
             self.layer_dims = [state_obs_dim] + cfg_network['actor_mlp']['units'] + [action_dim]
@@ -109,11 +96,9 @@ class ActorStochasticMLP(nn.Module):
     def get_logstd(self):
         return self.logstd
 
-    def forward(self, obs, deterministic = False, img_aug=False):
+    def forward(self, obs, deterministic = False):
 
         if self.enable_vis_obs:
-            if img_aug:
-                obs = self.aug(obs)
             obs = self.encoder(obs)
 
         mu = self.mu_net(obs)
@@ -128,11 +113,9 @@ class ActorStochasticMLP(nn.Module):
             sample = dist.rsample()
             return sample
     
-    def forward_with_dist(self, obs, deterministic = False, img_aug=False):
+    def forward_with_dist(self, obs, deterministic = False):
 
         if self.enable_vis_obs:
-            if img_aug:
-                obs = self.aug(obs)
             obs = self.encoder(obs)
 
         mu = self.mu_net(obs)
@@ -145,11 +128,9 @@ class ActorStochasticMLP(nn.Module):
             sample = dist.rsample()
             return sample, mu, std
         
-    def evaluate_actions_log_probs(self, obs, actions, img_aug=False):
+    def evaluate_actions_log_probs(self, obs, actions):
 
         if self.enable_vis_obs:
-            if img_aug:
-                obs = self.aug(obs)
             obs = self.encoder(obs)
 
         mu = self.mu_net(obs)

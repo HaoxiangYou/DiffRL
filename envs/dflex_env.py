@@ -1,10 +1,3 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
 import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -16,12 +9,13 @@ import dflex as df
 import xml.etree.ElementTree as ET
 
 from gym import spaces
+from utils.copy_utils import safe_deepcopy
+from viewer.maniskill_viewer import ManiskillViewer
 
 
 class DFlexEnv:
     
-    def __init__(self, num_envs, state_num_obs, num_act, episode_length, MM_caching_frequency = 1, seed=0, no_grad=True, render=False, device='cuda:0', 
-                vis_obs=False, img_height=84, img_width=84, render_mode="usd"):
+    def __init__(self, num_envs, state_num_obs, num_act, episode_length, MM_caching_frequency = 1, seed=0, no_grad=True, device='cuda:0', img_height=84, img_width=84):
         self.seed = seed
 
         self.no_grad = no_grad
@@ -31,18 +25,11 @@ class DFlexEnv:
 
         self.device = device
 
-        self.record = render
-
         self.sim_time = 0.0
 
         # visual obs related variables
-        self.enable_vis_obs = vis_obs
         self.obs_img_height = img_height
         self.obs_img_width = img_width
-
-        # eval videos related variables
-        self.render_mode = render_mode
-        self.num_frames = 0 # record the number of frames for rendering in usd mode
 
         self.num_environments = num_envs
         self.num_agents = 1
@@ -101,13 +88,10 @@ class DFlexEnv:
     
     @property
     def num_vis_obs(self):
-        if self.enable_vis_obs:
-            return (9, self.obs_img_height, self.obs_img_width)
-        else:
-            return None 
+        return (9, self.obs_img_height, self.obs_img_width) 
 
     def get_state(self):
-        return self.state.joint_q.clone(), self.state.joint_qd.clone()
+        return self.state.joint_q.clone().view(self.num_envs, -1), self.state.joint_qd.clone().view(self.num_envs, -1)
 
     def reset_with_state(self, init_joint_q, init_joint_qd, env_ids=None, force_reset=True):
         if env_ids is None:
@@ -126,3 +110,17 @@ class DFlexEnv:
             self.calculateObservations()
 
         return self.state_obs_buf
+    
+    def clone(self):
+        # Create a new, blank instance of the class
+        new_env = self.__class__.__new__(self.__class__)
+        
+        # Iterate through all attributes and handle them
+        for k, v in self.__dict__.items():
+            if isinstance(v, ManiskillViewer):
+                # If it's a Viewer, create a reference instead of new instance 
+                setattr(new_env, k, v)
+            else:
+                setattr(new_env, k, safe_deepcopy(v))  # Recursively deepcopy other attributes
+                
+        return new_env

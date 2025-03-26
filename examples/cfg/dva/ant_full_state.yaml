@@ -15,7 +15,7 @@ params:
     critic_mlp:
       units: [64, 64]
       activation: elu
-    
+
   config:
     name: df_ant_dva
     actor_learning_rate: 2e-3 # adam
@@ -36,12 +36,12 @@ params:
     truncate_grads: True 
     num_actors: 64
     # visual observation related
-    vis_obs: True
+    vis_obs: False
     img_height: 84 # only valid when 'vis_obs' = True
     img_width: 84 # only valid when 'vis_obs' = True
     # policy update
-    policy_update_method: gradient-descent # ['gradient-descent', 'trajopt-supervised'] 
-    # trajopt_learning_rate: 1e-2 # only valid when 'policy_update_method' = 'trajopt-supervised'
+    policy_update_method: trajopt-supervised # ['gradient-descent', 'trajopt-supervised'] 
+    trajopt_learning_rate: 1e-2 # only valid when 'policy_update_method' = 'trajopt-supervised'
     # img_aug: False # only valid when 'vis_obs' = True and 'policy_update_method' = 'trajopt-supervised'
     # img_aug_padding: 4 # only valid when 'img_aug' = True, 'vis_obs' = True and 'policy_update_method' = 'trajopt-supervised'
     save_interval: 400

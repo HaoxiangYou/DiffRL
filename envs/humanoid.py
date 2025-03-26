@@ -19,37 +19,24 @@ import dflex as df
 import numpy as np
 np.set_printoptions(precision=5, linewidth=256, suppress=True)
 
-try:
-    from pxr import Usd
-except ModuleNotFoundError:
-    print("No pxr package")
-
 from utils import load_utils as lu
 from utils import torch_utils as tu
-from viewer.dmc_viewer import DMCViewer
-from viewer.video_recorder import VideoRecorder
+from viewer.maniskill_viewer import ManiskillViewer
 
 class HumanoidEnv(DFlexEnv):
 
-    def __init__(self, render=False, render_mode="usd", device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84,
-                vis_obs=False, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
+    def __init__(self,  device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
         num_state_obs = 76
         num_act = 21
 
         super(HumanoidEnv, self).__init__(num_envs, num_state_obs, num_act, episode_length, MM_caching_frequency, seed, 
-                                    no_grad=no_grad, render=render, device=device, vis_obs=vis_obs, 
-                                    img_height=img_height, img_width=img_width, render_mode=render_mode)
+                                    no_grad=no_grad, device=device, img_height=img_height, img_width=img_width)
 
         self.stochastic_init = stochastic_init
 
         self.init_sim()
 
-        # whether output images as observation
-        self.dmc_render = None
-        if self.enable_vis_obs:
-            self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/humanoid.xml"), 
-                                    camera_id=0, height=self.obs_img_height, width=self.obs_img_width)
-
+        self.renderer = ManiskillViewer(env_name="HumanoidVis", num_env=num_envs, height=img_height, width=img_width)
 
         # other parameters
         self.termination_height = 0.74
@@ -85,28 +72,6 @@ class HumanoidEnv(DFlexEnv):
         self.termination_tolerance = 0.1
         self.height_rew_scale = 10.0
 
-        #-----------------------
-        # set up recorder
-        if (self.record):
-            # recording using usd
-            if self.render_mode == "usd":
-                self.stage = Usd.Stage.CreateNew("outputs/" + "Humanoid_" + str(self.num_envs) + ".usd")
-
-                self.recorder = df.render.UsdRenderer(self.model, self.stage)
-                self.recorder.draw_points = True
-                self.recorder.draw_springs = True
-                self.recorder.draw_shapes = True
-                self.recording_time = 0.0
-            # recording using dmc
-            elif self.render_mode == "dmc":
-                if self.dmc_render is None:
-                    self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, "envs/assets/humanoid.xml"), 
-                                            camera_id=0, height=img_height, width=img_width)
-                # make the high resolution videos for eval
-                self.recorder = VideoRecorder(root_dir="outputs", fps=int(1/self.sim_dt), height=256, width=256, camera_id=0)
-            else:
-                raise ValueError("render mode have to be usd or dmc")
-
     def init_sim(self):
         self.builder = df.sim.ModelBuilder()
 
@@ -139,12 +104,8 @@ class HumanoidEnv(DFlexEnv):
 
         self.start_pos = []
 
-        if self.record:
-            self.env_dist = 2.5
-        else:
-            self.env_dist = 0. # set to zero for training for numerical consistency
-
         start_height = 1.35
+        start_pos_z = 0.0
 
         asset_folder = os.path.join(os.path.dirname(__file__), 'assets')
         for i in range(self.num_environments):
@@ -162,7 +123,6 @@ class HumanoidEnv(DFlexEnv):
                 load_armature=True)
 
             # base transform
-            start_pos_z = i*self.env_dist
             self.start_pos.append([0.0, start_height, start_pos_z])
 
             self.builder.joint_q[i*self.num_joint_q:i*self.num_joint_q + 3] = self.start_pos[-1]
@@ -196,40 +156,25 @@ class HumanoidEnv(DFlexEnv):
         if (self.model.ground):
             self.model.collide(self.state)
 
-    def recording(self):
-        if self.record:            
-            if self.render_mode == "usd":
-                recording_interval = 1
-                self.recording_time += self.dt
-                self.recorder.update(self.state, self.recording_time)
-                if (self.num_frames == recording_interval):
-                    try:
-                        self.stage.Save()
-                    except:
-                        print("USD save error")
-                self.num_frames -= recording_interval
-            elif self.render_mode == "dmc":
-                # using the recorder render_kwargs 
-                # only record the first envs
-                pixels = self.render(torch.tensor([0]), self.recorder.render_kwargs)
-                self.recorder.append(pixels[0])
-                if self.reset_buf[0]:
-                    self.recorder.save("humanoid.mp4")
-
     """
     This function render imgs for target envs
     """
-    def render(self, env_ids, render_kwargs=None):
+    def render(self, env_ids):
+        mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1))
+        pixels = self.renderer.render(mujoco_joint_qs)[env_ids]
+        return pixels
+        
+    """
+    This function render a given trajectory (time sequences of joint_q in shac conventions) in shape (traj_length, num_env, num_q)
+    """
+    def render_traj(self, traj, recording=False):
         frames = []
-        if self.dmc_render:
-            mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1)[env_ids]).detach().cpu().numpy()
-            for mujoco_joint_q in mujoco_joint_qs:
-                frames.append(self.dmc_render.render(mujoco_joint_q, render_kwargs))
-            return np.stack(frames)
-        else:
-            raise ValueError("Render is being called without dmc render")
+        for mujoco_joint_qs in traj:
+            mujoco_joint_qs = self.get_mujoco_joint_q(mujoco_joint_qs).detach()
+            frames.append(self.renderer.render(mujoco_joint_qs, recording=recording))
+        return torch.stack(frames)
 
-    def step(self, actions):
+    def step(self, actions, enable_reset = True, enable_vis_obs = False):
         actions = actions.view((self.num_envs, self.num_actions))
 
         # todo - make clip range a parameter
@@ -259,38 +204,39 @@ class HumanoidEnv(DFlexEnv):
         self.reset_buf = torch.zeros_like(self.reset_buf)
 
         self.progress_buf += 1
-        self.num_frames += 1
 
         self.calculateStateObservations()
         self.calculateReward()
 
         env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-        if self.enable_vis_obs:
-            if len(env_ids) < self.num_envs:
-                self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+        if enable_vis_obs:
+            if enable_reset:
+                if len(env_ids) < self.num_envs:
+                    self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+            else:
+                self.calculateVisualObservations(torch.arange(self.num_envs, dtype=torch.long, device=self.device))
 
-        if self.no_grad == False:
+        if self.no_grad == False and enable_reset == True:
             self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
                 'state_obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
-            if self.enable_vis_obs:
+            if enable_vis_obs:
                 self.vis_obs_buf_before_reset = self.vis_obs_buf.clone()
                 self.extras["vis_obs_before_reset"] = self.vis_obs_buf_before_reset
-
-        if len(env_ids) > 0:
-           self.reset(env_ids)
-
-        self.recording()
+        
+        if enable_reset:
+            if len(env_ids) > 0:
+                self.reset(env_ids)
 
         obs = {"state_obs": self.state_obs_buf}
-        if self.enable_vis_obs:
+        if enable_vis_obs:
             obs["vis_obs"] = self.vis_obs_buf
 
         return obs, self.rew_buf, self.reset_buf, self.extras
     
-    def reset(self, env_ids = None, force_reset = True):
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=False):
         if env_ids is None:
             if force_reset == True:
                 env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device)
@@ -322,14 +268,14 @@ class HumanoidEnv(DFlexEnv):
             self.progress_buf[env_ids] = 0
 
             self.calculateStateObservations()
-            if self.enable_vis_obs:
+            if enable_vis_obs:
                 pixels = self.render(env_ids)
                 # three identical images at reset
-                pixels = torch.tile(torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device), (1, 3, 1, 1))
+                pixels = torch.tile(torch.moveaxis(pixels, 3, 1), (1, 3, 1, 1))
                 self.vis_obs_buf[env_ids] = pixels
 
         obs = {"state_obs":self.state_obs_buf}
-        if self.enable_vis_obs:
+        if enable_vis_obs:
             obs["vis_obs"] = self.vis_obs_buf
 
         return obs
@@ -358,12 +304,12 @@ class HumanoidEnv(DFlexEnv):
     This function starts collecting a new trajectory from the current states but cuts off the computation graph to the previous states.
     It has to be called every time the algorithm starts an episode and it returns the observation vectors
     '''
-    def initialize_trajectory(self):
+    def initialize_trajectory(self, enable_vis_obs=False):
         self.clear_grad()
         self.calculateStateObservations()
         obs = {"state_obs": self.state_obs_buf}
         # visual obs already don't have gradient
-        if self.enable_vis_obs:
+        if enable_vis_obs:
             obs["vis_obs"] = self.vis_obs_buf
 
         return obs
@@ -423,7 +369,7 @@ class HumanoidEnv(DFlexEnv):
         self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
         # append new images
         pixels = self.render(env_ids)
-        self.vis_obs_buf[env_ids, 6:, :, :] = torch.from_numpy(np.moveaxis(pixels, 3, 1)).to(self.device)
+        self.vis_obs_buf[env_ids, 6:, :, :] = torch.moveaxis(pixels, 3, 1)
         
     '''
     This function returns joint_q in mujoco conventions

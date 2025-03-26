@@ -34,11 +34,13 @@ params:
     steps_num: 32
     grad_norm: 1.0 
     truncate_grads: True
-    num_actors: 256
+    num_actors: 64
     # visual observation related
-    vis_obs: False
+    vis_obs: True
     img_height: 84
     img_width: 84
+    img_aug: False
+    img_aug_padding: 4
     save_interval: 400
 
     player:
@@ -46,4 +48,3 @@ params:
       games_num: 1
       num_actors: 1
       print_stats: True
-      render_mode: dmc # ['usd', 'dmc']

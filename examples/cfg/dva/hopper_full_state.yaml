@@ -1,31 +1,31 @@
 params:  
   diff_env:
-    name: CheetahEnv
+    name: HopperEnv
     stochastic_env: True
     episode_length: 1000
     MM_caching_frequency: 16
-    
+
   network:
-    actor: ActorStochasticMLP # ActorDeterministicMLP
+    actor: ActorStochasticMLP
     actor_mlp:
       units: [128, 64, 32]
       activation: elu
 
     critic: CriticMLP
     critic_mlp:
-      units: [64, 64] 
+      units: [64, 64]
       activation: elu
 
   config:
-    name: df_cheetah_dva
+    name: df_hopper_dva
     actor_learning_rate: 2e-3 # adam
-    critic_learning_rate: 2e-3 # adam
+    critic_learning_rate: 2e-4 # adam
     lr_schedule: linear # ['constant', 'linear']
-    target_critic_alpha: 0.2
+    target_critic_alpha: 0.2 
     state_obs_rms: True
     ret_rms: False
     critic_iterations: 16
-    critic_method: td-lambda # ['td-lambda', 'one-step']
+    critic_method: td-lambda
     lambda: 0.95
     num_batch: 4
     gamma: 0.99
@@ -39,11 +39,13 @@ params:
     vis_obs: False
     img_height: 84
     img_width: 84
+    # policy update
+    policy_update_method: gradient-descent # ['gradient-descent', 'trajopt-supervised'] 
+    # trajopt_learning_rate: 1e-2 # only valid when 'policy_update_method' = 'trajopt-supervised'
     save_interval: 400
 
     player:
-      determenistic: True
+      determenistic: False
       games_num: 1
       num_actors: 1
       print_stats: True
-      render_mode: dmc # ['usd', 'dmc']

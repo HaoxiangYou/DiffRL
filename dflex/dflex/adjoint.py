@@ -1105,14 +1105,14 @@ class Adjoint:
 
                 indices = []
 
-                if isinstance(node.slice.value, ast.Tuple):
+                if isinstance(node.slice, ast.Tuple):
                     # handles the M[i, j] case
-                    for arg in node.slice.value.elts:
+                    for arg in node.slice.elts:
                         var = adj.eval(arg)
                         indices.append(var)
                 else:
                     # simple expression
-                    var = adj.eval(node.slice.value)
+                    var = adj.eval(node.slice)
                     indices.append(var)
 
                 out = adj.add_call(functions["index"], [target, *indices])
@@ -1858,7 +1858,7 @@ def compile():
         ld_flags = ["-DNDEBUG"]
 
     # just use minimum to ensure compatability
-    cuda_flags = ['-gencode=arch=compute_87,code=compute_87']
+    cuda_flags = ['-gencode=arch=compute_86,code=compute_86']
 
     # release config
     if use_cuda:
