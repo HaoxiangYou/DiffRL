@@ -142,7 +142,7 @@ class ActionRepeatMultiEnvsWrapper(dm_env.Environment):
                     reward[j] += (time_step.reward or 0.0) * discount[j]
                     discount[j] *= time_step.discount
         # store done envs idx for reset purpose
-        # self.done_envs = np.array(list(done_envs.keys()), dtype=np.int32)
+        self.done_envs = np.array(list(done_envs.keys()), dtype=np.int32)
         return [time_step._replace(reward=reward[idx], discount=discount[idx]) for idx, time_step in enumerate(time_steps)]
 
     def observation_spec(self):

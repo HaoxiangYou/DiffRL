@@ -4,7 +4,9 @@ import os
 import pathlib
 import sys
 
-os.environ["MUJOCO_GL"] = "osmesa"
+import warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+os.environ["MUJOCO_GL"] = 'egl' # "osmesa"
 
 import numpy as np
 import ruamel.yaml as yaml
