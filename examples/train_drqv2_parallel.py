@@ -51,13 +51,11 @@ class MakeDMfromShac(dm_env.Environment):
         self.cfg = cfg
         env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         seeding(cfg["params"]["general"]["seed"])
+
         self.env =  env_fn(num_envs = 1 if self.eval else cfg["params"]["config"]["num_actors"], \
                             device = cfg["params"]["general"]["device"], \
-                            render = cfg["params"]["general"]["render"], \
-                            vis_obs = cfg["params"]["config"].get("vis_obs", False), \
                             img_height = cfg["params"]["config"].get("img_height", 84),\
                             img_width = cfg["params"]["config"].get("img_width", 84),\
-                            render_mode = cfg["params"]["config"]["player"].get("render_mode", 'usd') , \
                             seed = cfg["params"]["general"]["seed"], \
                             episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
                             stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
@@ -99,10 +97,12 @@ class MakeDMfromShac(dm_env.Environment):
         if hasattr(self.env, 'discount_spec'):
             self._discount_spec = self.env.discount_spec()
 
-    def reset(self, env_ids = None, force_reset = True):
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
         # return stacked observation (9 * width * height)
         self.env.clear_grad()
-        obs = self.env.reset(env_ids, force_reset)
+        obs = self.env.reset(env_ids=env_ids, 
+                             force_reset=force_reset,
+                             enable_vis_obs=enable_vis_obs)
         vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
         return [dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
                             reward=None,
@@ -110,8 +110,10 @@ class MakeDMfromShac(dm_env.Environment):
                             observation=vis_obs) for vis_obs in vis_obs_batch]
          
     
-    def step(self, action):
-        obs, rew_batch, done_batch, extra_info = self.env.step(torch.tanh(torch.tensor(action, dtype = torch.float32, device = self.device)))
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        obs, rew_batch, done_batch, extra_info = self.env.step(actions = torch.tanh(torch.tensor(actions, dtype = torch.float32, device = self.device)), 
+                                                               enable_reset = enable_reset, 
+                                                               enable_vis_obs = enable_vis_obs)
         del extra_info
         self.raw_rew[:] = rew_batch.detach().clone().cpu().numpy()
         vis_obs_batch = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
@@ -233,16 +235,18 @@ class Workspace:
             self.video_recorder.init(self.eval_env, enabled=(episode == 0))
             while not time_step[0].last():
                 with torch.no_grad(), utils.eval_mode(self.agent):
-                    action = self.agent.act(time_step[0].observation,
+                    actions = self.agent.act(time_step[0].observation,
                                             self.global_step,
                                             eval_mode=True)
-                time_step = self.eval_env.step(action)
+                time_step = self.eval_env.step(actions=actions, 
+                                                enable_reset = False, 
+                                                enable_vis_obs = True)
                 self.video_recorder.record(self.eval_env)
                 total_reward += time_step[0].reward
                 step += 1
             episode += 1
             if time_step[0].last():
-                self.eval_env.reset()
+                self.eval_env.reset(force_reset = True, enable_vis_obs=True)
             self.video_recorder.save(f'{self.step_count}.mp4')
 
     def process_time_steps(self, store_time_steps):
@@ -278,7 +282,7 @@ class Workspace:
                     self.episode_loss_his.append(self.episode_loss[done_env_id].item())
                     self.episode_loss[done_env_id] = 0.
                 
-                self.train_env.reset(np.array(done_ids, dtype=np.int32))
+                self.train_env.reset(env_ids=np.array(done_ids, dtype=np.int32), enable_vis_obs=True)
         
         self._global_episode += len(done_ids)
         self._num_episode_finished += len(done_ids)
@@ -313,21 +317,22 @@ class Workspace:
             # output action with shape (num_envs, action_size)
             with torch.no_grad(), utils.eval_mode(self.agent):
                 self.vis_obs_buffer[:] = torch.tensor([time_step.observation for time_step in time_steps])
-                action = self.agent.act(self.vis_obs_buffer,
+                actions = self.agent.act(self.vis_obs_buffer,
                                         self.global_step,
                                         eval_mode=False)
             
             # try to update the agent
             if not seed_until_step(self.global_step):
-            # if self._global_episode // 10 > 0:
-            # if self._num_episode_finished > 3:
-                metrics = self.agent.update(self.replay_iter, self.global_step)
+                for i in range(self.global_step, self.global_step + self.num_envs):
+                    metrics = self.agent.update(self.replay_iter, i)
                 self.save_snapshot()
                 actor_step += 1
                 self._num_episode_finished = 0
 
             # take env step       
-            time_steps = self.train_env.step(action)
+            time_steps = self.train_env.step(actions=actions, 
+                                             enable_reset = False, 
+                                             enable_vis_obs = True)
             episode_reward += np.sum([time_step.reward for time_step in time_steps])
             self.process_time_steps(time_steps)
             self.step_count += self.num_envs * self.cfg.action_repeat

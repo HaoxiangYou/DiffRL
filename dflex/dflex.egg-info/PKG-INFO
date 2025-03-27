@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.2
 Name: dflex
 Version: 0.0.1
 Summary: Differentiable Multiphysics for Python
@@ -9,3 +9,9 @@ Classifier: Operating System :: OS Independent
 Description-Content-Type: text/markdown
 Requires-Dist: ninja
 Requires-Dist: torch
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description-content-type
+Dynamic: requires-dist
+Dynamic: summary

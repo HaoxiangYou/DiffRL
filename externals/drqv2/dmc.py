@@ -102,11 +102,15 @@ class ActionScaleWrapper(dm_env.Environment):
     self._env = env
     self._transform = transform
 
-  def step(self, action):
-    return self._env.step(self._transform(action))
+  def step(self, actions, enable_reset = False, enable_vis_obs = True):
+    return self._env.step(actions = self._transform(actions), 
+                            enable_reset = enable_reset, 
+                            enable_vis_obs = enable_vis_obs)
 
-  def reset(self, env_ids = None, force_reset = True):
-    return self._env.reset(env_ids, force_reset)
+  def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+    return self._env.reset(env_ids=env_ids, 
+                           force_reset=force_reset,
+                           enable_vis_obs=enable_vis_obs)
 
   def observation_spec(self):
     return self._env.observation_spec()
@@ -122,12 +126,14 @@ class ActionRepeatMultiEnvsWrapper(dm_env.Environment):
         self._env = env
         self._num_repeats = num_repeats
 
-    def step(self, action):
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
         reward = np.zeros(self._env.num_envs, np.float32)
         discount = np.ones(self._env.num_envs, np.float32)
         done_envs = {} # this keep track of which envs are done so that we don't repeat them  
         for i in range(self._num_repeats):
-            time_steps = self._env.step(action)
+            time_steps = self._env.step(actions = actions, 
+                                        enable_reset = enable_reset, 
+                                        enable_vis_obs = enable_vis_obs)
             for j, time_step in enumerate(time_steps):
                 if j in done_envs.keys():
                     # Discard the current time_step if the env has reached the end previously
@@ -136,7 +142,6 @@ class ActionRepeatMultiEnvsWrapper(dm_env.Environment):
                     # if the env is done, we will add the time_step to the done_envs
                     done_envs[j] = time_step
                     reward[j] += (time_step.reward or 0.0) * discount[j]
-                    discount[j] *= time_step.discount
                 else:
                     # if the envs is not done, we will add the reward and discount
                     reward[j] += (time_step.reward or 0.0) * discount[j]
@@ -151,8 +156,10 @@ class ActionRepeatMultiEnvsWrapper(dm_env.Environment):
     def action_spec(self):
         return self._env.action_spec()
 
-    def reset(self, env_ids = None, force_reset = True):
-        return self._env.reset(env_ids, force_reset)
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        return self._env.reset(env_ids=env_ids, 
+                                force_reset=force_reset,
+                                enable_vis_obs=enable_vis_obs)
 
     def __getattr__(self, name):
         return getattr(self._env, name)
@@ -162,11 +169,13 @@ class ActionRepeatWrapper(dm_env.Environment):
         self._env = env
         self._num_repeats = num_repeats
 
-    def step(self, action):
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
         reward = 0.0
         discount = 1.0
         for i in range(self._num_repeats):
-            time_step = self._env.step(action)
+            time_step = self._env.step(actions=actions, 
+                                        enable_reset = enable_reset, 
+                                        enable_vis_obs = enable_vis_obs)
             reward += (time_step.reward or 0.0) * discount
             discount *= time_step.discount
             if time_step.last():
@@ -180,8 +189,10 @@ class ActionRepeatWrapper(dm_env.Environment):
     def action_spec(self):
         return self._env.action_spec()
 
-    def reset(self, env_ids = None, force_reset = True):
-        return self._env.reset(env_ids, force_reset)
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        return self._env.reset(env_ids=env_ids, 
+                               force_reset=force_reset,
+                               enable_vis_obs=enable_vis_obs)
 
     def __getattr__(self, name):
         return getattr(self._env, name)
@@ -226,8 +237,8 @@ class FrameStackWrapper(dm_env.Environment):
             self._frames.append(pixels)
         return self._transform_observation(time_step)
 
-    def step(self, action):
-        time_step = self._env.step(action)
+    def step(self, actions):
+        time_step = self._env.step(actions)
         pixels = self._extract_pixels(time_step)
         self._frames.append(pixels)
         return self._transform_observation(time_step)
@@ -251,9 +262,11 @@ class ActionDTypeWrapper(dm_env.Environment):
                                                wrapped_action_spec.maximum,
                                                'action')
 
-    def step(self, action):
-        action = action.astype(self._env.action_spec().dtype)
-        return self._env.step(action)
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        actions = actions.astype(self._env.action_spec().dtype)
+        return self._env.step(actions=actions, 
+                                enable_reset = enable_reset, 
+                                enable_vis_obs = enable_vis_obs)
 
     def observation_spec(self):
         return self._env.observation_spec()
@@ -261,8 +274,10 @@ class ActionDTypeWrapper(dm_env.Environment):
     def action_spec(self):
         return self._action_spec
 
-    def reset(self, env_ids = None, force_reset = True):
-        return self._env.reset(env_ids, force_reset)
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        return self._env.reset(env_ids=env_ids, 
+                               force_reset=force_reset,
+                               enable_vis_obs=enable_vis_obs)
 
     def __getattr__(self, name):
         return getattr(self._env, name)
@@ -272,21 +287,25 @@ class ExtendedTimeStepWrapper(dm_env.Environment):
     def __init__(self, env):
         self._env = env
 
-    def reset(self, env_ids = None, force_reset = True):
-        time_step = self._env.reset(env_ids, force_reset)
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        time_step = self._env.reset(env_ids=env_ids, 
+                                    force_reset=force_reset,
+                                    enable_vis_obs=enable_vis_obs)
         return self._augment_time_step(time_step)
 
-    def step(self, action):
-        time_step = self._env.step(action)
-        return self._augment_time_step(time_step, action)
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        time_step = self._env.step(actions=actions, 
+                                   enable_reset = enable_reset, 
+                                   enable_vis_obs = enable_vis_obs)
+        return self._augment_time_step(time_step, actions)
 
-    def _augment_time_step(self, time_step, action=None):
-        if action is None:
+    def _augment_time_step(self, time_step, actions=None):
+        if actions is None:
             action_spec = self.action_spec()
-            action = np.zeros(action_spec.shape, dtype=action_spec.dtype)
+            actions = np.zeros(action_spec.shape, dtype=action_spec.dtype)
         return ExtendedTimeStep(observation=time_step.observation,
                                 step_type=time_step.step_type,
-                                action=action,
+                                action=actions,
                                 reward=time_step.reward or 0.0,
                                 discount=time_step.discount or 1.0)
 
@@ -336,21 +355,25 @@ class ExtendedTimeStepMultiEnvsWrapper(dm_env.Environment):
     def __init__(self, env):
         self._env = env
 
-    def reset(self, env_ids = None, force_reset = True):
-        time_step = self._env.reset(env_ids, force_reset)
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        time_step = self._env.reset(env_ids=env_ids, 
+                                    force_reset=force_reset,
+                                    enable_vis_obs=enable_vis_obs)
         return self._augment_time_step(time_step)
 
-    def step(self, action):
-        time_step = self._env.step(action)
-        return self._augment_time_step(time_step, action)
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        time_step = self._env.step(actions=actions, 
+                                   enable_reset = enable_reset, 
+                                   enable_vis_obs = enable_vis_obs)
+        return self._augment_time_step(time_step, actions)
 
-    def _augment_time_step(self, time_step_list, action=None):
-        if action is None:
+    def _augment_time_step(self, time_step_list, actions=None):
+        if actions is None:
             action_spec = self.action_spec()
-            action = np.zeros((self._env.num_envs, self._env.num_actions), dtype=action_spec.dtype)
+            actions = np.zeros((self._env.num_envs, self._env.num_actions), dtype=action_spec.dtype)
         return [ExtendedTimeStep(observation=time_step.observation,
                                 step_type=time_step.step_type,
-                                action=action[idx],
+                                action=actions[idx],
                                 reward=time_step.reward or 0.0,
                                 discount=time_step.discount or 1.0) for idx, time_step in enumerate(time_step_list)]
 
@@ -364,36 +387,17 @@ class ExtendedTimeStepMultiEnvsWrapper(dm_env.Environment):
         return getattr(self._env, name)
 
 def make_from_shac(env, cfg):
-    # frame_stack = cfg.frame_stack 
     action_repeat = cfg.action_repeat 
-    # seed = cfg.seed 
     env = ActionDTypeWrapper(env, np.float32)
-    # env = ActionRepeatWrapper(env, action_repeat)
     env = ActionRepeatMultiEnvsWrapper(env, action_repeat)
     env = ActionScaleWrapper(env, minimum=-1.0, maximum=+1.0)
-    # zoom in camera for quadruped
-    # stack several frames
-    # env = FrameStackWrapper(env, frame_stack, pixels_key)
-    # if eval:
-    #     env = ExtendedTimeStepWrapper(env)
-    # else:
     env = ExtendedTimeStepMultiEnvsWrapper(env)
     return env
 
 def make_from_shac_single_thread(env, cfg):
-    # frame_stack = cfg.frame_stack 
     action_repeat = cfg.action_repeat 
-    # seed = cfg.seed 
     env = ActionDTypeWrapper(env, np.float32)
     env = ActionRepeatWrapper(env, action_repeat)
-    # env = ActionRepeatMultiEnvsWrapper(env, action_repeat)
     env = ActionScaleWrapper(env, minimum=-1.0, maximum=+1.0)
-    # zoom in camera for quadruped
-    # stack several frames
-    # env = FrameStackWrapper(env, frame_stack, pixels_key)
-    # if eval:
-    #     env = ExtendedTimeStepWrapper(env)
-    # else:
-    # env = ExtendedTimeStepMultiEnvsWrapper(env)
     env = ExtendedTimeStepWrapper(env)
     return env
