@@ -581,7 +581,7 @@ class SHAC:
         self.time_report.end_timer("algorithm")
 
         self.time_report.report()
-        
+
         self.save_time_report()
         
         self.save('final_policy')
@@ -624,7 +624,8 @@ class SHAC:
     def play(self, cfg):
         self.load(cfg['params']['general']['checkpoint'])
         self.run(cfg['params']['config']['player']['games_num'], save_dir=os.path.join(os.path.dirname(cfg['params']['general']['checkpoint']), "eval/play"))
-        
+        self.video_recorder.stop()
+
     def save(self, filename = None, save_dir = None):
         if save_dir is None:
             save_dir = self.log_dir
