@@ -701,6 +701,7 @@ class DVA:
                 self.run(self.num_envs, save_dir=save_dir, maximum_eval_length=self.max_episode_length//5)
                 self.save(save_dir=save_dir, filename=self.name + "policy_iter{}_reward{:.3f}".format(self.iter_count, -mean_policy_loss))
                 self.time_report.end_timer("evaluation")
+                self.save_time_report(save_dir=save_dir)
                 print_info("Evaluation done in {} seconds".format(time.time()-eval_start_time))
 
             # update target critic
@@ -714,6 +715,8 @@ class DVA:
 
         self.time_report.report()
         
+        self.save_time_report()
+
         self.save('final_policy')
 
         # save reward/length history
@@ -739,8 +742,18 @@ class DVA:
             for j in range(frames.shape[0]):
                 self.video_recorder.append(frames[j, i])
             self.video_recorder.save("eval_traj_{}.mp4".format(i))
-        self.video_recorder.stop()
 
+    def save_time_report(self, save_dir = None):
+        if save_dir is None:
+            save_dir = self.log_dir
+        
+        time_report = {}
+        for timer_name in self.time_report.timers.keys():
+            time_report.update({timer_name: self.time_report.timers[timer_name].time_total})
+
+        with open(os.path.join(save_dir, "time_report.pkl"), "wb") as f:
+            pickle.dump(time_report, f)
+    
     def play(self, cfg):
         self.load(cfg['params']['general']['checkpoint'])
         self.run(cfg['params']['config']['player']['games_num'], save_dir=os.path.join(os.path.dirname(cfg['params']['general']['checkpoint']), "eval/play"))
@@ -761,5 +774,6 @@ class DVA:
         self.ret_rms = checkpoint[4].to(self.device) if checkpoint[4] is not None else checkpoint[4]
         
     def close(self):
+        self.video_recorder.stop()
         self.writer.close()
     
