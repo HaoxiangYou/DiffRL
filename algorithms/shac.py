@@ -606,7 +606,6 @@ class SHAC:
             for j in range(frames.shape[0]):
                 self.video_recorder.append(frames[j, i])
             self.video_recorder.save("eval_traj_{}.mp4".format(i))
-        self.video_recorder.stop()
 
     def play(self, cfg):
         self.load(cfg['params']['general']['checkpoint'])
@@ -628,5 +627,6 @@ class SHAC:
         self.ret_rms = checkpoint[4].to(self.device) if checkpoint[4] is not None else checkpoint[4]
         
     def close(self):
+        self.video_recorder.stop()
         self.writer.close()
     
