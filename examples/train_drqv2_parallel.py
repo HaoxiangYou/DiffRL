@@ -312,24 +312,26 @@ class Workspace:
             # try to evaluate
             if eval_every_step(self.step_count):
                 self.eval()
-            
+            now = time.time()
             # sample action
             # output action with shape (num_envs, action_size)
+            convert_time  = time.time()
             with torch.no_grad(), utils.eval_mode(self.agent):
-                self.vis_obs_buffer[:] = torch.tensor([time_step.observation for time_step in time_steps])
-                actions = self.agent.act(self.vis_obs_buffer,
+                actions = self.agent.act(torch.from_numpy(np.array([time_step.observation for time_step in time_steps])).to(self.device),
                                         self.global_step,
                                         eval_mode=False)
-            
+            print("convert time:", time.time()-convert_time)
             # try to update the agent
+            update_time = time.time()
             if not seed_until_step(self.global_step):
                 for i in range(self.global_step, self.global_step + self.num_envs):
                     metrics = self.agent.update(self.replay_iter, i)
                 self.save_snapshot()
                 actor_step += 1
                 self._num_episode_finished = 0
-
+            print("update time:", time.time()-update_time)
             # take env step       
+            step_time = time.time()
             time_steps = self.train_env.step(actions=actions, 
                                              enable_reset = False, 
                                              enable_vis_obs = True)
@@ -337,7 +339,8 @@ class Workspace:
             self.process_time_steps(time_steps)
             self.step_count += self.num_envs * self.cfg.action_repeat
             episode_step += 1
-
+            print("step time:", time.time()-step_time)
+            # print("fps: ", (self.num_envs * self.cfg.action_repeat)/time_elapsed)
             self._global_step += self.num_envs
             
             # logging
@@ -349,8 +352,7 @@ class Workspace:
                 self.writer.add_scalar('rewards/iter', -mean_policy_loss, actor_step)
 
             self.writer.flush()
-
-
+            print("loop time:", time.time()-now)
         self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.close()

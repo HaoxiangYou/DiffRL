@@ -22,4 +22,5 @@ dependencies:
     - mani_skill==3.0.0b20
     - hydra-core==1.1.0
     - hydra-submitit-launcher==1.1.5
+    - ruamel.yaml==0.17.4
     
