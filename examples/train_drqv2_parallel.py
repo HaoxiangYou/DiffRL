@@ -2,9 +2,6 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-import warnings
-warnings.filterwarnings('ignore', category=DeprecationWarning)
-
 import os
 os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
 os.environ['MUJOCO_GL'] = 'egl'
@@ -36,7 +33,8 @@ from utils.average_meter import AverageMeter
 import time
 import yaml
 from collections import defaultdict
-from train_drqv2 import MakeDMfromShac as MakeDMfromShacSingleEnv
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 torch.backends.cudnn.benchmark = True
 
@@ -162,6 +160,7 @@ class Workspace:
         self._num_episode_finished = 0
         self.time_report = TimeReport()
         self.writer = SummaryWriter(os.path.join(self.work_dir, 'tb'))
+        self.writer.add_scalar('a/step', 1.0, 2.0)
         self.episode_loss_meter = AverageMeter(1, 100).to(self.device)
         self.vis_obs_buffer = torch.zeros(
             (self.num_envs, 9, self.img_height , self.img_width ), device=self.device, dtype=torch.uint8, requires_grad=False)
@@ -169,20 +168,17 @@ class Workspace:
         self.step_count = 0
         self._current_episodes = [copy.deepcopy(defaultdict(list)) for _ in range(self.num_envs)]
         self.episode_loss_his = []
+        self.episode_length_his = []
+        
         self.episode_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
         self.episode_loss_meter = AverageMeter(1, 100).to(self.device)
-
+        self.episode_length_meter = AverageMeter(1, 100).to(self.device)
     def setup(self):
-        # create logger
-        # self.logger = Logger(self.work_dir, use_tb=self.cfg.use_tb)
-
-        # create envs
-        # env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
         train_env = MakeDMfromShac(self.cfg, False)
         eval_env = MakeDMfromShac(self.cfg, True)
         self.env = train_env
-        self.train_env = dmc.make_from_shac(train_env, self.cfg)
-        self.eval_env = dmc.make_from_shac(eval_env, self.cfg)
+        self.train_env = dmc.make_env(train_env, self.cfg)
+        self.eval_env = dmc.make_env(eval_env, self.cfg)
         # create replay buffer
         action_spec = specs.BoundedArray((self.train_env.num_actions, ),
                                                    minimum=-1,
@@ -270,18 +266,21 @@ class Workspace:
                 self._current_episodes[idx] = copy.deepcopy(defaultdict(list))
                 self.replay_storage._store_episode(episode)
         
+        self.episode_length += 1
         # Finally, process the reward for logging
         with torch.no_grad():
             self.episode_loss -= torch.tensor(self.train_env.raw_rew, dtype=torch.float32, device=self.device)
             if len(done_ids)>0:
                 self.episode_loss_meter.update(self.episode_loss[done_ids])
+                self.episode_length_meter.update(self.episode_length[done_ids])
                 for done_env_id in done_ids:
                     if (self.episode_loss[done_env_id] > 1e6 or self.episode_loss[done_env_id] < -1e6):
                         print('ep loss error')
                         raise ValueError
                     self.episode_loss_his.append(self.episode_loss[done_env_id].item())
+                    self.episode_length_his.append(self.episode_length[done_env_id].item())
                     self.episode_loss[done_env_id] = 0.
-                
+                    self.episode_length[done_env_id] = 0
                 self.train_env.reset(env_ids=np.array(done_ids, dtype=np.int32), enable_vis_obs=True)
         
         self._global_episode += len(done_ids)
@@ -312,26 +311,25 @@ class Workspace:
             # try to evaluate
             if eval_every_step(self.step_count):
                 self.eval()
-            now = time.time()
+
+            time_start_epoch = time.time()
             # sample action
             # output action with shape (num_envs, action_size)
-            convert_time  = time.time()
             with torch.no_grad(), utils.eval_mode(self.agent):
-                actions = self.agent.act(torch.from_numpy(np.array([time_step.observation for time_step in time_steps])).to(self.device),
+                self.vis_obs_buffer[:] = torch.tensor([time_step.observation for time_step in time_steps])
+                actions = self.agent.act(self.vis_obs_buffer,
                                         self.global_step,
                                         eval_mode=False)
-            print("convert time:", time.time()-convert_time)
+            
             # try to update the agent
-            update_time = time.time()
             if not seed_until_step(self.global_step):
                 for i in range(self.global_step, self.global_step + self.num_envs):
-                    metrics = self.agent.update(self.replay_iter, i)
+                    metrics = self.agent.update(self.replay_iter, i, self.time_report)
                 self.save_snapshot()
                 actor_step += 1
                 self._num_episode_finished = 0
-            print("update time:", time.time()-update_time)
+
             # take env step       
-            step_time = time.time()
             time_steps = self.train_env.step(actions=actions, 
                                              enable_reset = False, 
                                              enable_vis_obs = True)
@@ -339,20 +337,27 @@ class Workspace:
             self.process_time_steps(time_steps)
             self.step_count += self.num_envs * self.cfg.action_repeat
             episode_step += 1
-            print("step time:", time.time()-step_time)
-            # print("fps: ", (self.num_envs * self.cfg.action_repeat)/time_elapsed)
+
             self._global_step += self.num_envs
             
             # logging
             time_elapse = time.time() - self.start_time
             if (len(self.episode_loss_his) > 0):
                 mean_policy_loss = self.episode_loss_meter.get_mean()
+                mean_episode_length = self.episode_length_meter.get_mean()
                 self.writer.add_scalar('rewards/step', -mean_policy_loss, self.step_count)
                 self.writer.add_scalar('rewards/time', -mean_policy_loss, time_elapse)
                 self.writer.add_scalar('rewards/iter', -mean_policy_loss, actor_step)
+            else:
+                mean_policy_loss = np.inf
+                mean_episode_length = 0
 
             self.writer.flush()
-            print("loop time:", time.time()-now)
+        time_end_epoch = time.time()
+        print('iter {}: ep loss {:.2f}, ep len {}, fps total {:.2f}'.format(\
+                    episode_step, mean_policy_loss, mean_episode_length, 
+                    self.cfg.action_repeat * self.num_envs / (time_end_epoch - time_start_epoch)))
+
         self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.close()

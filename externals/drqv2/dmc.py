@@ -386,18 +386,10 @@ class ExtendedTimeStepMultiEnvsWrapper(dm_env.Environment):
     def __getattr__(self, name):
         return getattr(self._env, name)
 
-def make_from_shac(env, cfg):
+def make_env(env, cfg):
     action_repeat = cfg.action_repeat 
     env = ActionDTypeWrapper(env, np.float32)
     env = ActionRepeatMultiEnvsWrapper(env, action_repeat)
     env = ActionScaleWrapper(env, minimum=-1.0, maximum=+1.0)
     env = ExtendedTimeStepMultiEnvsWrapper(env)
-    return env
-
-def make_from_shac_single_thread(env, cfg):
-    action_repeat = cfg.action_repeat 
-    env = ActionDTypeWrapper(env, np.float32)
-    env = ActionRepeatWrapper(env, action_repeat)
-    env = ActionScaleWrapper(env, minimum=-1.0, maximum=+1.0)
-    env = ExtendedTimeStepWrapper(env)
     return env
