@@ -59,4 +59,3 @@ print('fps = ', 1000 * args.num_envs / (t_end - t_start))
 print('mean reward = ', reward_episode.mean().detach().cpu().item())
 
 print('Finish Successfully')
-

@@ -207,6 +207,7 @@ class DVA:
         state_obs = obs["state_obs"]
         if self.enable_vis_obs:
             vis_obs = obs["vis_obs"]
+
         if self.state_obs_rms is not None:
             # update state obs rms
             with torch.no_grad():

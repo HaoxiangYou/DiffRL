@@ -57,22 +57,16 @@ class RLGPUEnv(vecenv.IVecEnv):
 
         self.rl_device = "cuda:0"
 
-        obs = self.env.reset(force_reset=True)
-        state_obs = obs["state_obs"].to(self.rl_device)
-        self.full_state["obs"] = state_obs
+        self.full_state["obs"] = self.env.reset(force_reset=True).to(self.rl_device)
         print(self.full_state["obs"].shape)
 
     def step(self, actions):
-        obs, reward, is_done, info = self.env.step(actions.to(self.env.device))
-        state_obs = obs["state_obs"]
-        self.full_state["obs"] = state_obs
+        self.full_state["obs"], reward, is_done, info = self.env.step(actions.to(self.env.device))
 
         return self.full_state["obs"].to(self.rl_device), reward.to(self.rl_device), is_done.to(self.rl_device), info
 
     def reset(self):
-        obs = self.env.reset(force_reset=True)
-        state_obs = obs["state_obs"]
-        self.full_state["obs"] = state_obs
+        self.full_state["obs"] = self.env.reset(force_reset=True)
 
         return self.full_state["obs"].to(self.rl_device)
 
