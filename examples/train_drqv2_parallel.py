@@ -166,6 +166,7 @@ class Workspace:
             (self.num_envs, 9, self.img_height , self.img_width ), device=self.device, dtype=torch.uint8, requires_grad=False)
         self.iter_count = 0
         self.step_count = 0
+        self.episode_length = torch.zeros(self.num_envs, dtype = int, device=self.device)
         self._current_episodes = [copy.deepcopy(defaultdict(list)) for _ in range(self.num_envs)]
         self.episode_loss_his = []
         self.episode_length_his = []
@@ -353,10 +354,10 @@ class Workspace:
                 mean_episode_length = 0
 
             self.writer.flush()
-        time_end_epoch = time.time()
-        print('iter {}: ep loss {:.2f}, ep len {}, fps total {:.2f}'.format(\
-                    episode_step, mean_policy_loss, mean_episode_length, 
-                    self.cfg.action_repeat * self.num_envs / (time_end_epoch - time_start_epoch)))
+            time_end_epoch = time.time()
+            print('iter {}: ep loss {:.2f}, ep len {}, fps total {:.2f}'.format(\
+                        episode_step, mean_policy_loss, mean_episode_length, 
+                        self.cfg.action_repeat * self.num_envs / (time_end_epoch - time_start_epoch)))
 
         self.time_report.end_timer("algorithm")
         self.time_report.report()
