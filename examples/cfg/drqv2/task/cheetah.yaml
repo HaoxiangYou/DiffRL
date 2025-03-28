@@ -26,7 +26,7 @@ params:
     train: True
 
   config:
-    name: df_cheetah_dva
+    name: df_cheetah_drqv2
     dmc_render_model: half_cheetah
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 2e-3 # adam
@@ -58,4 +58,3 @@ params:
       games_num: 1
       num_actors: 1
       print_stats: True
-      render_mode: dmc # ['usd', 'dmc']
