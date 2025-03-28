@@ -142,7 +142,6 @@ class Workspace:
     def __init__(self, cfg):
         self.work_dir = Path.cwd()
         print(f'workspace: {self.work_dir}')
-
         self.cfg = cfg
         self.num_envs = cfg["params"]["config"]["num_actors"]
         self.img_height = cfg["params"]["config"].get("img_height", 84)
@@ -204,7 +203,6 @@ class Workspace:
             self.work_dir if self.cfg.save_video else None)
         self.train_video_recorder = TrainVideoRecorder(
             self.work_dir if self.cfg.save_train_video else None)
-
 
     @property
     def global_step(self):
@@ -335,9 +333,11 @@ class Workspace:
                 self._num_episode_finished = 0
 
             # take env step       
+            time_start_steps = time.time()
             time_steps = self.train_env.step(actions=actions, 
                                              enable_reset = False, 
                                              enable_vis_obs = True)
+            time_end_steps = time.time()
             episode_reward += np.sum([time_step.reward for time_step in time_steps])
             self.process_time_steps(time_steps)
             self.step_count += self.num_envs * self.cfg.action_repeat
@@ -359,9 +359,9 @@ class Workspace:
 
             self.writer.flush()
             time_end_epoch = time.time()
-            print('iter {}: ep loss {:.2f}, ep len {}, fps total {:.2f}'.format(\
+            print('iter {}: ep loss {:.2f}, ep len {}, fps episode {:.2f}, fps env steps {:2f}'.format(\
                         episode_step, mean_policy_loss, mean_episode_length, 
-                        self.cfg.action_repeat * self.num_envs / (time_end_epoch - time_start_epoch)))
+                        1 / (time_end_epoch - time_start_epoch), self.cfg.action_repeat * self.num_envs / (time_end_steps - time_start_steps)))
         self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.close()

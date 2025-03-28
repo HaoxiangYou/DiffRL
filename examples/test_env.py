@@ -1,32 +1,20 @@
-import warnings
-warnings.filterwarnings('ignore', category=DeprecationWarning)
+# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
+# NVIDIA CORPORATION and its licensors retain all intellectual property
+# and proprietary rights in and to this software, related documentation
+# and any modifications thereto.  Any use, reproduction, disclosure or
+# distribution of this software and related documentation without an express
+# license agreement from NVIDIA CORPORATION is strictly prohibited.
 
-import os
-os.environ['MKL_SERVICE_FORCE_INTEL'] = '1'
-os.environ['MUJOCO_GL'] = 'egl'
-
-import sys
+import sys, os
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_dir)
 
-from pathlib import Path
-
-import hydra
-import numpy as np
-import torch
-import copy
-from tqdm import tqdm
 import time
 
-import dm_env
-from dm_env import specs
-from tensorboardX import SummaryWriter
+import torch
+import random
+
 import envs
-from externals.drqv2 import utils
-from externals.drqv2 import dmc
-from externals.drqv2.logger import Logger
-from externals.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
-from externals.drqv2.video import TrainVideoRecorder, VideoRecorder
 from utils.common import *
 
 import argparse
@@ -71,4 +59,3 @@ print('fps = ', 1000 * args.num_envs / (t_end - t_start))
 print('mean reward = ', reward_episode.mean().detach().cpu().item())
 
 print('Finish Successfully')
-

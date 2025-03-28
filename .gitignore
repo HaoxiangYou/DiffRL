@@ -169,3 +169,5 @@ outputs/
 
 examples/logs/
 examples/logs_drqv2/
+
+.vscode/

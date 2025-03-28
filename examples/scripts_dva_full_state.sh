@@ -1,7 +1,7 @@
 seeds='100 200 300 400 500'
 algorithms='dva'
 num_actors='16 32 64 128'
-envs='humanoid ant cheetah hopper' 
+envs='humanoid_full_state ant_full_state cheetah_full_state hopper_full_state'   
 learning_rates='0.002'
 for env in $envs
 do

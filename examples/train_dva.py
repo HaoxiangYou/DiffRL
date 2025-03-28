@@ -68,8 +68,8 @@ def get_args(): # TODO: delve into the arguments
             "help": "whether not add time stamp at the log path"},
         {"name": "--device", "type": str, "default": "cuda:0"},
         {"name": "--seed", "type": int, "default": 0, "help": "Random seed"},
-        {"name": "--actor_learning_rate", "type": float, "default": 2e-3, "help": "Actor Learning Rate"},
-        {"name": "--num_actors", "type": int, "default": 64, "help": "Number of Envs"}]
+        {"name": "--actor_learning_rate", "type": float, "default": 0, "help": "Actor Learning Rate"},
+        {"name": "--num_actors", "type": int, "default": 0, "help": "Number of Envs"}]
     
     # parse arguments
     args = parse_arguments(
@@ -95,15 +95,17 @@ if __name__ == '__main__':
     if not args.no_time_stamp:
         args.logdir = os.path.join(args.logdir, get_time_stamp())
 
-    if args.num_actors:
+    if args.num_actors != 0:
+        # if user specifies num_actors, overwrite the config
         cfg_train["params"]["config"]["num_actors"] = args.num_actors
-        args.logdir = args.logdir + "/num_actors_"+str(args.num_actors)
+        args.logdir += "/num_actors_"+str(cfg_train["params"]["config"]["num_actors"])
 
-    if args.actor_learning_rate:
+    if args.actor_learning_rate != 0:
+        # if user specifies actor_learning_rate, overwrite the config
         cfg_train["params"]["config"]["actor_learning_rate"] = args.actor_learning_rate
-        args.logdir = args.logdir + "_actor_lr_" + str(args.actor_learning_rate)
-    
-    args.logdir = args.logdir + "_seed_" + str(args.seed)
+        args.logdir += "_actor_lr_" + str(cfg_train["params"]["config"]["actor_learning_rate"])
+
+    args.logdir = os.path.join(args.logdir , "seed_" + str(args.seed))
 
     args.device = torch.device(args.device)
 
