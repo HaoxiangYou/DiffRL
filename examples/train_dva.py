@@ -103,7 +103,7 @@ if __name__ == '__main__':
     if args.actor_learning_rate != 0:
         # if user specifies actor_learning_rate, overwrite the config
         cfg_train["params"]["config"]["actor_learning_rate"] = args.actor_learning_rate
-        args.logdir += "_actor_lr_" + str(cfg_train["params"]["config"]["actor_learning_rate"])
+        args.logdir += "/actor_lr_" + str(cfg_train["params"]["config"]["actor_learning_rate"])
 
     args.logdir = os.path.join(args.logdir , "seed_" + str(args.seed))
 
