@@ -67,7 +67,9 @@ def get_args(): # TODO: delve into the arguments
         {"name": "--no-time-stamp", "action": "store_true", "default": False,
             "help": "whether not add time stamp at the log path"},
         {"name": "--device", "type": str, "default": "cuda:0"},
-        {"name": "--seed", "type": int, "default": 0, "help": "Random seed"}]
+        {"name": "--seed", "type": int, "default": 0, "help": "Random seed"},
+        {"name": "--actor_learning_rate", "type": float, "default": 2e-3, "help": "Actor Learning Rate"},
+        {"name": "--num_actors", "type": int, "default": 64, "help": "Number of Envs"}]
     
     # parse arguments
     args = parse_arguments(
@@ -92,7 +94,17 @@ if __name__ == '__main__':
 
     if not args.no_time_stamp:
         args.logdir = os.path.join(args.logdir, get_time_stamp())
+
+    if args.num_actors:
+        cfg_train["params"]["config"]["num_actors"] = args.num_actors
+        args.logdir = args.logdir + "/num_actors_"+str(args.num_actors)
+
+    if args.actor_learning_rate:
+        cfg_train["params"]["config"]["actor_learning_rate"] = args.actor_learning_rate
+        args.logdir = args.logdir + "_actor_lr_" + str(args.actor_learning_rate)
     
+    args.logdir = args.logdir + "_seed_" + str(args.seed)
+
     args.device = torch.device(args.device)
 
     vargs = vars(args)
@@ -100,7 +112,7 @@ if __name__ == '__main__':
     cfg_train["params"]["general"] = {}
     for key in vargs.keys():
         cfg_train["params"]["general"][key] = vargs[key]
-
+    
     traj_optimizer = dva.DVA(cfg_train)
 
     if args.train:

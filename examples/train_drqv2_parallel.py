@@ -16,7 +16,7 @@ import hydra
 import numpy as np
 import torch
 import copy
-
+import pickle
 import dm_env
 from dm_env import specs
 from tensorboardX import SummaryWriter
@@ -43,7 +43,7 @@ def make_agent(obs_spec, action_spec, cfg):
     cfg.action_shape = action_spec.shape
     return hydra.utils.instantiate(cfg)
 
-class MakeDMfromShac(dm_env.Environment):
+class MakeDMfromdFlex(dm_env.Environment):
     def __init__(self, cfg, eval):
         self.eval = eval
         self.cfg = cfg
@@ -160,7 +160,6 @@ class Workspace:
         self._num_episode_finished = 0
         self.time_report = TimeReport()
         self.writer = SummaryWriter(os.path.join(self.work_dir, 'tb'))
-        self.writer.add_scalar('a/step', 1.0, 2.0)
         self.episode_loss_meter = AverageMeter(1, 100).to(self.device)
         self.vis_obs_buffer = torch.zeros(
             (self.num_envs, 9, self.img_height , self.img_width ), device=self.device, dtype=torch.uint8, requires_grad=False)
@@ -174,9 +173,10 @@ class Workspace:
         self.episode_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
         self.episode_loss_meter = AverageMeter(1, 100).to(self.device)
         self.episode_length_meter = AverageMeter(1, 100).to(self.device)
+    
     def setup(self):
-        train_env = MakeDMfromShac(self.cfg, False)
-        eval_env = MakeDMfromShac(self.cfg, True)
+        train_env = MakeDMfromdFlex(self.cfg, False)
+        eval_env = MakeDMfromdFlex(self.cfg, True)
         self.env = train_env
         self.train_env = dmc.make_env(train_env, self.cfg)
         self.eval_env = dmc.make_env(eval_env, self.cfg)
@@ -294,6 +294,8 @@ class Workspace:
         self.time_report.add_timer("algorithm")
         self.time_report.add_timer("actor training")
         self.time_report.add_timer("critic training")
+        self.time_report.add_timer("evaluation time") 
+        self.time_report.add_timer("actor action time")
         
         self.time_report.start_timer("algorithm")
 
@@ -311,14 +313,16 @@ class Workspace:
         while train_until_step(self.global_step):
             # try to evaluate
             if eval_every_step(self.step_count):
+                self.time_report.start_timer("evaluation time")
                 self.eval()
+                self.time_report.end_timer("evaluation time")
+                self.save_time_report(save_dir=self.work_dir)
 
             time_start_epoch = time.time()
             # sample action
             # output action with shape (num_envs, action_size)
             with torch.no_grad(), utils.eval_mode(self.agent):
-                self.vis_obs_buffer[:] = torch.tensor([time_step.observation for time_step in time_steps])
-                actions = self.agent.act(self.vis_obs_buffer,
+                actions = self.agent.act(torch.from_numpy(np.array([time_step.observation for time_step in time_steps], dtype=np.uint8)).to(self.device), 
                                         self.global_step,
                                         eval_mode=False)
             
@@ -358,7 +362,6 @@ class Workspace:
             print('iter {}: ep loss {:.2f}, ep len {}, fps total {:.2f}'.format(\
                         episode_step, mean_policy_loss, mean_episode_length, 
                         self.cfg.action_repeat * self.num_envs / (time_end_epoch - time_start_epoch)))
-
         self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.close()
@@ -376,6 +379,17 @@ class Workspace:
             payload = torch.load(f)
         for k, v in payload.items():
             self.__dict__[k] = v
+
+    def save_time_report(self, save_dir = None):
+        if save_dir is None:
+            save_dir = self.log_dir
+        
+        time_report = {}
+        for timer_name in self.time_report.timers.keys():
+            time_report.update({timer_name: self.time_report.timers[timer_name].time_total})
+
+        with open(os.path.join(save_dir, "time_report.pkl"), "wb") as f:
+            pickle.dump(time_report, f)
 
     def close(self):
         self.writer.close()

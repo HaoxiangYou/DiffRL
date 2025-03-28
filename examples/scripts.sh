@@ -1,15 +1,24 @@
-# python train_ac.py --cfg ./cfg/ac/ant.yaml --logdir ./logs/test-new-loader/Ant/ac/20 --seed 20 --no-time-stamp
-# python train_ac.py --cfg ./cfg/ac/ant.yaml --logdir ./logs/test-new-loader/Ant/ac/30 --seed 30 --no-time-stamp
-# python train_ac.py --cfg ./cfg/ac/ant.yaml --logdir ./logs/test-new-loader/Ant/ac/40 --seed 40 --no-time-stamp
-# python train_rl.py --cfg ./cfg/rl/ant.yaml --logdir ./logs/test-new-loader/Ant/rl/20 --seed 20 --no-time-stamp
-# python train_rl.py --cfg ./cfg/rl/ant.yaml --logdir ./logs/test-new-loader/Ant/rl/30 --seed 30 --no-time-stamp
-# python train_rl.py --cfg ./cfg/rl/ant.yaml --logdir ./logs/test-new-loader/Ant/rl/40 --seed 40 --no-time-stamp
-python train_curl.py \
-    --domain_name cartpole \
-    --task_name swingup \
-    --encoder_type pixel \
-    --action_repeat 8 \
-    --save_tb --pre_transform_image_size 100 --image_size 84 \
-    --work_dir ./logs/cartpole/curl \
-    --agent curl_sac --frame_stack 3 \
-    --seed -1 --critic_lr 1e-3 --actor_lr 1e-3 --eval_freq 10000 --batch_size 128 --num_train_steps 1000000 --save_video
+seeds='100 200 300 400 500'
+algorithms='dva'
+num_actors='16 32 64 128'
+envs='humanoid ant cheetah hopper' 
+learning_rates='0.002'
+for env in $envs
+do
+    for algorithm in $algorithms
+    do 
+        for num_actor in $num_actors
+        do 
+            for seed in $seeds
+            do
+                for learning_rate in $learning_rates
+                do
+                    echo "Now Running Experiment: $algorithm, Robot: $env Seed: $seed, Number of Actors: $num_actor, Actor Learning Rate: $learning_rate"
+                    python train_dva.py --cfg ./cfg/$algorithm/$env.yaml --actor_learning_rate $learning_rate --logdir ./logs/$env/$algorithm --seed $seed --num_actors $num_actor --no-time-stamp
+                done
+            done
+        done    
+    done
+done 
+
+
