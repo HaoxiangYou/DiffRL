@@ -600,7 +600,7 @@ class SHAC:
 
         self.close()
 
-    def save_video(self, joint_qs, save_dir=None, max_video_length=500):
+    def save_video(self, joint_qs, save_dir=None, max_video_length=800):
         self.video_recorder.update_save_dir(save_dir)
         frames = self.env.render_traj(joint_qs[:max_video_length], recording=True)
         
