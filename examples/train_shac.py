@@ -101,12 +101,12 @@ if __name__ == '__main__':
     if args.num_actors != 0:
         # if user specifies num_actors, overwrite the config
         cfg_train["params"]["config"]["num_actors"] = args.num_actors
-        args.logdir += "/num_actors_"+str(cfg_train["params"]["config"]["num_actors"])
+    args.logdir += "/num_actors_"+str(cfg_train["params"]["config"]["num_actors"])
 
     if args.actor_learning_rate != 0:
         # if user specifies actor_learning_rate, overwrite the config
         cfg_train["params"]["config"]["actor_learning_rate"] = args.actor_learning_rate
-        args.logdir += "/actor_lr_" + str(cfg_train["params"]["config"]["actor_learning_rate"])
+    args.logdir += "/actor_lr_" + str(cfg_train["params"]["config"]["actor_learning_rate"])
 
     args.logdir = os.path.join(args.logdir , "seed_" + str(args.seed))
 
