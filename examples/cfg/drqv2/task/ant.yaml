@@ -4,7 +4,7 @@ stddev_schedule: 'linear(1.0,0.1,500000)'
 params:  
   diff_env:
     name: AntEnv
-    stochastic_env: False # True
+    stochastic_env: True
     episode_length: 1000
     MM_caching_frequency: 16
 
