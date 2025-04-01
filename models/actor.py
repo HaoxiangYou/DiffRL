@@ -40,6 +40,8 @@ class ActorDeterministicMLP(nn.Module):
         else:
             self.obs_dim = state_obs_dim
 
+        if self.enable_vis_obs:
+            print(self.encoder)
         print(self.actor)
 
     def get_logstd(self):
@@ -90,6 +92,8 @@ class ActorStochasticMLP(nn.Module):
         else:
             self.obs_dim = state_obs_dim
 
+        if self.enable_vis_obs:
+            print(self.encoder)
         print(self.mu_net)
         print(self.logstd)
     
