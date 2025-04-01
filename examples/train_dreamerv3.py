@@ -11,13 +11,15 @@ os.environ["MUJOCO_GL"] = 'egl' # "osmesa"
 import numpy as np
 import ruamel.yaml as yaml
 
+project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_dir)
 sys.path.append(str(pathlib.Path(__file__).parent))
 
 import externals.dreamerv3.exploration as expl
 import externals.dreamerv3.models as models
 from externals.dreamerv3 import tools
 import externals.dreamerv3.envs.wrappers as wrappers
-from parallel import Parallel, Damy
+from externals.dreamerv3.parallel import Parallel, Damy
 
 import torch
 from torch import nn
@@ -148,14 +150,14 @@ def make_dataset(episodes, config):
 def make_env(config, mode, id):
     suite, task = config.task.split("_", 1)
     if suite == "dmc":
-        import envs.dmc as dmc
+        import externals.dreamerv3.envs.dmc as dmc
 
         env = dmc.DeepMindControl(
             task, config.action_repeat, config.size, seed=config.seed + id
         )
         env = wrappers.NormalizeActions(env)
     elif suite == "atari":
-        import envs.atari as atari
+        import externals.dreamerv3.envs.atari as atari
 
         env = atari.Atari(
             task,
@@ -171,7 +173,7 @@ def make_env(config, mode, id):
         )
         env = wrappers.OneHotAction(env)
     elif suite == "dmlab":
-        import envs.dmlab as dmlab
+        import externals.dreamerv3.envs.dmlab as dmlab
 
         env = dmlab.DeepMindLabyrinth(
             task,
@@ -181,17 +183,17 @@ def make_env(config, mode, id):
         )
         env = wrappers.OneHotAction(env)
     elif suite == "memorymaze":
-        from envs.memorymaze import MemoryMaze
+        from externals.dreamerv3.envs.memorymaze import MemoryMaze
 
         env = MemoryMaze(task, seed=config.seed + id)
         env = wrappers.OneHotAction(env)
     elif suite == "crafter":
-        import envs.crafter as crafter
+        import externals.dreamerv3.envs.crafter as crafter
 
         env = crafter.Crafter(task, config.size, seed=config.seed + id)
         env = wrappers.OneHotAction(env)
     elif suite == "minecraft":
-        import envs.minecraft as minecraft
+        import externals.dreamerv3.envs.minecraft as minecraft
 
         env = minecraft.make_env(task, size=config.size, break_speed=config.break_speed)
         env = wrappers.OneHotAction(env)
@@ -346,7 +348,7 @@ if __name__ == "__main__":
     parser.add_argument("--configs", nargs="+")
     args, remaining = parser.parse_known_args()
     configs = yaml.safe_load(
-        (pathlib.Path(sys.argv[0]).parent / "configs.yaml").read_text()
+        (pathlib.Path(sys.argv[0]).parent / "cfg/dreamerv3/configs.yaml").read_text()
     )
 
     def recursive_update(base, update):

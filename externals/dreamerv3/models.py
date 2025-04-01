@@ -2,8 +2,8 @@ import copy
 import torch
 from torch import nn
 
-import networks
-import tools
+import externals.dreamerv3.networks as networks
+import externals.dreamerv3.tools as tools   
 
 to_np = lambda x: x.detach().cpu().numpy()
 
