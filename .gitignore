@@ -169,5 +169,6 @@ outputs/
 
 examples/logs/
 examples/logs_drqv2/
+examples/logs_dreamerv3/
 
 .vscode/
