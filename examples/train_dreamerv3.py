@@ -2,11 +2,13 @@ import argparse
 import functools
 import os
 import pathlib
-import sys
-
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
 os.environ["MUJOCO_GL"] = 'egl' # "osmesa"
+
+import sys
+project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(project_dir)
 
 import numpy as np
 import ruamel.yaml as yaml
@@ -21,6 +23,13 @@ from externals.dreamerv3 import tools
 import externals.dreamerv3.envs.wrappers as wrappers
 from externals.dreamerv3.parallel import Parallel, Damy
 
+import dm_env
+from dm_env import specs
+import envs
+from viewer.dmc_viewer import DMCViewer
+from utils.time_report import TimeReport
+from utils.common import *
+
 import torch
 from torch import nn
 from torch import distributions as torchd
@@ -28,6 +37,98 @@ from torch import distributions as torchd
 
 to_np = lambda x: x.detach().cpu().numpy()
 
+class MakeDMfromdFlex(dm_env.Environment):
+    def __init__(self, cfg, task):
+        self.cfg = cfg
+        
+        env_fn = getattr(envs, cfg.env_name[task])
+        seeding(cfg.seed)
+        self.env =  env_fn(num_envs = 1, \
+                            device = cfg.device, \
+                            img_height = cfg.img_height,\
+                            img_width = cfg.img_width,\
+                            seed = cfg.seed, \
+                            episode_length=cfg.episode_length, \
+                            stochastic_init = cfg.stochastic_env, \
+                            MM_caching_frequency = cfg.MM_caching_frequency, \
+                            no_grad = True)
+        print('num_envs = ', self.env.num_envs)
+        print('num_actions = ', self.env.num_actions)
+        print('num_state_obs = ', self.env.num_state_obs)
+        print('num_vis_obs =', self.env.num_vis_obs)
+        self.num_envs = self.env.num_envs
+        self.num_actions = self.env.num_actions
+        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
+        self.camera_id = 0 # render camera id. 
+        self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
+        self.dmc_render_model = cfg.dmc_render_model[task]
+        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
+                                            camera_id=0, height=self.render_size, width=self.render_size)
+        self.device = cfg.device
+        self.raw_rew = np.zeros((self.env.num_envs)) 
+        if hasattr(self.env, 'observation_spec'):
+            self._observation_spec = self._env.observation_spec()
+        else:
+            self._observation_spec = specs.BoundedArray(self.env.num_vis_obs,
+                                                        minimum= 0,
+                                                        maximum= 255,
+                                                        dtype='uint8',
+                                                        name='observation')
+
+        if hasattr(self.env, 'action_spec'):
+            self._action_spec = self._env.action_spec()
+        else:
+            self._action_spec = specs.BoundedArray((self.env.num_actions, ),
+                                                   minimum=-1 * np.ones((self.env.num_actions, )),
+                                                   maximum=1 * np.ones((self.env.num_actions, )),
+                                                   dtype='float32',
+                                                   name='action')
+        self._reward_spec = specs.Array(shape=(), dtype=np.dtype('float32'), name='reward')
+        self._discount_spec = specs.BoundedArray(
+        shape=(), dtype='float32', minimum=0.0, maximum=1.0, name='discount')
+        if hasattr(self.env, 'discount_spec'):
+            self._discount_spec = self.env.discount_spec()
+
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        # return stacked observation (9 * width * height)
+        self.env.clear_grad()
+        obs = self.env.reset(env_ids=env_ids, 
+                             force_reset=force_reset,
+                             enable_vis_obs=enable_vis_obs)
+        obs_stack = np.squeeze((obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")).transpose(1, 2, 0)
+        return dm_env.TimeStep(step_type=dm_env.StepType.FIRST, 
+                            reward=None,
+                            discount=1.0,
+                            observation=obs_stack[:,:,-3:])
+         
+    
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        obs, rew_batch, done_batch, extra_info = self.env.step(actions = torch.tanh(torch.tensor(actions, dtype = torch.float32, device = self.device)), 
+                                                               enable_reset = enable_reset, 
+                                                               enable_vis_obs = enable_vis_obs)
+        del extra_info
+        self.raw_rew[:] = rew_batch.detach().clone().cpu().numpy()
+        obs_stack = np.squeeze((obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")).transpose(1, 2, 0)
+        return dm_env.TimeStep(step_type=dm_env.StepType.MID if not done_batch.detach().clone().cpu().item() else dm_env.StepType.LAST,
+                            reward=rew_batch.detach().clone().cpu().item(),
+                            discount=1.0,
+                            observation=obs_stack[:,:,-3:])
+    
+    def observation_spec(self):
+        return self._observation_spec
+    
+    def reward_spec(self):
+        return self._reward_spec
+    
+    def action_spec(self):
+        return self._action_spec
+    
+    def discount_spec(self):
+        return self._discount_spec
+    
+    def render(self):
+        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
+        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
 
 class Dreamer(nn.Module):
     def __init__(self, obs_space, act_space, config, logger, dataset):
@@ -156,6 +257,16 @@ def make_env(config, mode, id):
             task, config.action_repeat, config.size, seed=config.seed + id
         )
         env = wrappers.NormalizeActions(env)
+        env.reset()
+
+    elif suite == "dflex":
+        import externals.dreamerv3.envs.dmc as dmc
+        env = MakeDMfromdFlex(config, task)
+        env = dmc.DeepMindControlDflex(
+            env, config.action_repeat, config.size, seed=config.seed + id)
+        env = wrappers.NormalizeActions(env)
+        env.reset()
+
     elif suite == "atari":
         import externals.dreamerv3.envs.atari as atari
 
@@ -174,7 +285,6 @@ def make_env(config, mode, id):
         env = wrappers.OneHotAction(env)
     elif suite == "dmlab":
         import externals.dreamerv3.envs.dmlab as dmlab
-
         env = dmlab.DeepMindLabyrinth(
             task,
             mode if "train" in mode else "test",
@@ -184,14 +294,14 @@ def make_env(config, mode, id):
         env = wrappers.OneHotAction(env)
     elif suite == "memorymaze":
         from externals.dreamerv3.envs.memorymaze import MemoryMaze
-
         env = MemoryMaze(task, seed=config.seed + id)
         env = wrappers.OneHotAction(env)
+
     elif suite == "crafter":
         import externals.dreamerv3.envs.crafter as crafter
-
         env = crafter.Crafter(task, config.size, seed=config.seed + id)
         env = wrappers.OneHotAction(env)
+
     elif suite == "minecraft":
         import externals.dreamerv3.envs.minecraft as minecraft
 
@@ -241,6 +351,7 @@ def main(config):
     make = lambda mode, id: make_env(config, mode, id)
     train_envs = [make("train", i) for i in range(config.envs)]
     eval_envs = [make("eval", i) for i in range(config.envs)]
+
     if config.parallel:
         train_envs = [Parallel(env, "process") for env in train_envs]
         eval_envs = [Parallel(env, "process") for env in eval_envs]
