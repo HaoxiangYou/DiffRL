@@ -30,6 +30,8 @@ from viewer.dmc_viewer import DMCViewer
 from utils.time_report import TimeReport
 from utils.average_meter import AverageMeter
 from utils.common import *
+import pickle
+import time
 
 import torch
 from torch import nn
@@ -317,8 +319,31 @@ def make_env(config, mode, id):
         env = wrappers.RewardObs(env)
     return env
 
+def save_training_summary(in_time_report, optinal_value=None ,save_dir = None):
+        if save_dir is None:
+            raise ValueError("save_dir is None")
+        
+        time_report = {}
+        for timer_name in in_time_report.timers.keys():
+            time_report.update({timer_name: in_time_report.timers[timer_name].time_total})
+
+        training_summary = {
+        "time_report": time_report,
+        "env_step": optinal_value["env_step"], 
+        }
+
+        with open(os.path.join(save_dir, "training_summary.pkl"), "wb") as f:
+            pickle.dump(training_summary, f)
 
 def main(config):
+    time_report = TimeReport()
+    time_report.add_timer("algorithm")
+    time_report.add_timer("actor training")
+    time_report.add_timer("critic training")
+    time_report.add_timer("evaluation time") 
+    time_report.add_timer("actor action time")    
+    time_report.start_timer("algorithm")
+
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:
         tools.enable_deterministic_run()
@@ -337,7 +362,6 @@ def main(config):
     step = count_steps(config.traindir)
     # step in logger is environmental step
     logger = tools.Logger(logdir, config.action_repeat * step)
-
     print("Create envs.")
     if config.offline_traindir:
         directory = config.offline_traindir.format(**vars(config))
@@ -393,6 +417,7 @@ def main(config):
             logger,
             limit=config.dataset_size,
             steps=prefill,
+            time_report=time_report,
         )
         logger.step += prefill * config.action_repeat
         print(f"Logger: ({logger.step} steps).")
@@ -419,6 +444,7 @@ def main(config):
         logger.write()
         if config.eval_episode_num > 0:
             print("Start evaluation.")
+            time_report.start_timer("evaluation time")
             eval_policy = functools.partial(agent, training=False)
             tools.simulate(
                 eval_policy,
@@ -428,11 +454,14 @@ def main(config):
                 logger,
                 is_eval=True,
                 episodes=config.eval_episode_num,
+                time_report=time_report,
             )
+            time_report.end_timer("evaluation time")
             if config.video_pred_log:
                 video_pred = agent._wm.video_pred(next(eval_dataset))
                 logger.video("eval_openl", to_np(video_pred))
         print("Start training.")
+        time_report.start_timer("actor training")
         state = tools.simulate(
             agent,
             train_envs,
@@ -442,12 +471,17 @@ def main(config):
             limit=config.dataset_size,
             steps=config.eval_every,
             state=state,
+            time_report=time_report,
         )
+        time_report.end_timer("actor training")
         items_to_save = {
             "agent_state_dict": agent.state_dict(),
             "optims_state_dict": tools.recursively_collect_optim_state_dict(agent),
         }
         torch.save(items_to_save, logdir / "latest.pt")
+    time_report.end_timer("algorithm")
+    time_report.report()
+    # save_training_summary()
     for env in train_envs + eval_envs:
         try:
             env.close()

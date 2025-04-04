@@ -136,6 +136,7 @@ def simulate(
     steps=0,
     episodes=0,
     state=None,
+    time_report=None,
 ):
     # initialize or unpack simulation state
     if state is None:
@@ -216,12 +217,17 @@ def simulate(
                         # log items won't be used later
                         cache[envs[i].id].pop(key)
 
+                time_report.end_timer("algorithm")
                 if not is_eval:
                     step_in_dataset = erase_over_episodes(cache, limit)
                     logger.scalar(f"dataset_size", step_in_dataset)
                     logger.scalar(f"train_return", score)
                     logger.scalar(f"train_length", length)
                     logger.scalar(f"train_episodes", len(cache))
+                    time_elapsed = time.time() - time_report["algorithm"].time_total - time_report["evaluation"].time_total
+                    # log reward with env step for later comparision
+                    logger.scalar(f'rewards/step', score)
+                    logger.scalar(f'rewards/time', time_elapsed)
                     logger.write(step=logger.step)
                 else:
                     if not "eval_lengths" in locals():
@@ -242,6 +248,7 @@ def simulate(
                         logger.scalar(f"eval_episodes", len(eval_scores))
                         logger.write(step=logger.step)
                         eval_done = True
+                time_report.start_timer("algorithm")
     if is_eval:
         # keep only last item for saving memory. this cache is used for video_pred later
         while len(cache) > 1:
