@@ -701,7 +701,7 @@ class DVA:
                 self.run(self.num_envs, save_dir=save_dir, maximum_eval_length=self.max_episode_length//5)
                 self.save(save_dir=save_dir, filename=self.name + "policy_iter{}_reward{:.3f}".format(self.iter_count, -mean_policy_loss))
                 self.time_report.end_timer("evaluation")
-                self.save_time_report(save_dir=save_dir)
+                self.save_training_summary(save_dir=save_dir)
                 print_info("Evaluation done in {} seconds".format(time.time()-eval_start_time))
 
             # update target critic
@@ -715,7 +715,7 @@ class DVA:
 
         self.time_report.report()
         
-        self.save_time_report()
+        self.save_training_summary()
 
         self.save('final_policy')
 
@@ -743,7 +743,7 @@ class DVA:
                 self.video_recorder.append(frames[j, i])
             self.video_recorder.save("eval_traj_{}.mp4".format(i))
 
-    def save_time_report(self, save_dir = None):
+    def save_training_summary(self, save_dir = None):
         if save_dir is None:
             save_dir = self.log_dir
         
@@ -751,8 +751,13 @@ class DVA:
         for timer_name in self.time_report.timers.keys():
             time_report.update({timer_name: self.time_report.timers[timer_name].time_total})
 
-        with open(os.path.join(save_dir, "time_report.pkl"), "wb") as f:
-            pickle.dump(time_report, f)
+        training_summary = {
+        "time_report": time_report,
+        "env_step": self.step_count 
+        }
+
+        with open(os.path.join(save_dir, "training_summary.pkl"), "wb") as f:
+            pickle.dump(training_summary, f)
     
     def play(self, cfg):
         self.load(cfg['params']['general']['checkpoint'])

@@ -61,3 +61,42 @@ class ActorSupervisedDataset:
         if self.action_eps is not None:
             batch_sample["action_eps"] = self.action_eps[start_idx:end_idx]
         return batch_sample
+    
+
+class ExpertReplayBuffer(object):    
+    def __init__(self, max_size=1000000):
+
+        self.max_size = max_size
+
+        # store each rollout
+        self.paths = []
+
+        # store (concatenated) component arrays from each rollout
+        self.vis_obs = None
+        self.state_obs = None
+        self.actions = None
+
+    def __len__(self):
+        if self.state_obs is not None:
+            return self.state_obs.shape[0]
+        else:
+            return 0
+        
+    def append(self, control_action_pairs):
+
+        state_obs = control_action_pairs["state_obs"].cpu().numpy()
+        actions = control_action_pairs["actions"].cpu().numpy()
+        vis_obs = None
+        if "vis_obs" in control_action_pairs:
+            vis_obs = control_action_pairs["vis_obs"].cpu().numpy()
+
+        if self.state_obs is None:
+            self.state_obs = state_obs[-self.max_size:]
+            self.actions = actions[-self.max_size:]
+            if vis_obs is not None:
+                self.vis_obs = vis_obs[-self.max_size:]
+        else:
+            self.state_obs = np.concatenate([self.state_obs, state_obs])[-self.max_size:]
+            self.actions = np.concatenate([self.actions, actions])[-self.max_size:]
+            if vis_obs is not None:
+                self.vis_obs = np.concatenate([self.vis_obs, vis_obs])[-self.max_size:]
