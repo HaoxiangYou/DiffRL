@@ -117,7 +117,7 @@ dflex_vision:
   episode_length: 1000
   MM_caching_frequency: 16
   dmc_render_model: {humanoid: 'humanoid', hopper: 'hopper', cheetah: 'half_cheetah', ant: 'ant'}
-  env_name: {humanoid: 'HumanoidEnv', hopper: 'HopperEnv', cheetah: 'HalfCheetahEnv', ant: 'AntEnv'}
+  env_name: {humanoid: 'HumanoidEnv', hopper: 'HopperEnv', cheetah: 'CheetahEnv', ant: 'AntEnv'}
 
 dmc_vision:
   steps: 1e6
