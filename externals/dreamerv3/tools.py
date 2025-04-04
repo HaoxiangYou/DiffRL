@@ -224,7 +224,8 @@ def simulate(
                     logger.scalar(f"train_return", score)
                     logger.scalar(f"train_length", length)
                     logger.scalar(f"train_episodes", len(cache))
-                    time_elapsed = time.time() - time_report["algorithm"].time_total - time_report["evaluation"].time_total
+                    import pdb; pdb.set_trace()
+                    time_elapsed = time.time() - time_report.timers["algorithm"].time_total - time_report.timers["evaluation"].time_total
                     # log reward with env step for later comparision
                     logger.scalar(f'rewards/step', score)
                     logger.scalar(f'rewards/time', time_elapsed)
