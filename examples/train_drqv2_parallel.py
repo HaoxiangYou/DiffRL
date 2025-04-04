@@ -172,7 +172,8 @@ class Workspace:
         self.episode_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
         self.episode_loss_meter = AverageMeter(1, 100).to(self.device)
         self.episode_length_meter = AverageMeter(1, 100).to(self.device)
-    
+        self.best_policy_loss = np.inf
+
     def setup(self):
         train_env = MakeDMfromdFlex(self.cfg, False)
         eval_env = MakeDMfromdFlex(self.cfg, True)
@@ -222,9 +223,12 @@ class Workspace:
             self._replay_iter = iter(self.replay_loader)
         return self._replay_iter
 
-    def eval(self):
-        step, episode, total_reward = 0, 0, 0
+    def eval(self, file_name):
         eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
+        step, episode, total_reward = 0, 0, 0
+        save_dir = self.work_dir / "eval" / file_name 
+        os.makedirs(save_dir, exist_ok=True)
+
         while eval_until_episode(episode):
             time_step = self.eval_env.reset(env_ids = None, force_reset = True)
             self.video_recorder.init(self.eval_env, enabled=(episode == 0))
@@ -242,7 +246,8 @@ class Workspace:
             episode += 1
             if time_step[0].last():
                 self.eval_env.reset(force_reset = True, enable_vis_obs=True)
-            self.video_recorder.save(f'{self.step_count}.mp4')
+            self.video_recorder.save(file_name= f"{file_name}/eval_video.mp4")
+        return total_reward / episode
 
     def process_time_steps(self, store_time_steps):
         done_ids = []
@@ -311,10 +316,15 @@ class Workspace:
         while train_until_step(self.global_step):
             # try to evaluate
             if eval_every_step(self.step_count):
+                print_info("Start Evaluation with maximum trajectory length:{}".format(torch.max(self.episode_length).item()))
+                eval_start_time = time.time()
                 self.time_report.start_timer("evaluation time")
-                self.eval()
+                save_dir = os.path.join(self.work_dir, "eval/iter_{}".format(episode_step))
+                mean_eval_policy_loss = self.eval(file_name="iter_{}".format(episode_step))
                 self.time_report.end_timer("evaluation time")
-                self.save_time_report(save_dir=self.work_dir)
+                self.save(save_dir=save_dir, filename=self.cfg["params"]["diff_env"]["name"] + "policy_iter{}_reward{:.3f}".format(episode_step, -mean_eval_policy_loss))
+                self.save_training_summary(save_dir=save_dir)
+                print_info("Evaluation done in {} seconds".format(time.time()-eval_start_time))
 
             time_start_epoch = time.time()
             # sample action
@@ -353,6 +363,10 @@ class Workspace:
                 self.writer.add_scalar('rewards/step', -mean_policy_loss, self.step_count)
                 self.writer.add_scalar('rewards/time', -mean_policy_loss, time_elapse)
                 self.writer.add_scalar('rewards/iter', -mean_policy_loss, actor_step)
+                if mean_policy_loss < self.best_policy_loss:
+                    self.best_policy_loss = mean_policy_loss
+                    self.save()
+                    print_info("Best policy saved with loss: {:2f}".format(mean_policy_loss))
             else:
                 mean_policy_loss = np.inf
                 mean_episode_length = 0
@@ -364,6 +378,7 @@ class Workspace:
                         1 / (time_end_epoch - time_start_epoch), self.cfg.action_repeat * self.num_envs / (time_end_steps - time_start_steps)))
         self.time_report.end_timer("algorithm")
         self.time_report.report()
+        self.save_training_summary()
         self.close()
 
     def save_snapshot(self):
@@ -380,19 +395,29 @@ class Workspace:
         for k, v in payload.items():
             self.__dict__[k] = v
 
-    def save_time_report(self, save_dir = None):
+    def save_training_summary(self, save_dir = None):
         if save_dir is None:
-            save_dir = self.log_dir
+            save_dir = self.work_dir
         
         time_report = {}
         for timer_name in self.time_report.timers.keys():
             time_report.update({timer_name: self.time_report.timers[timer_name].time_total})
 
-        with open(os.path.join(save_dir, "time_report.pkl"), "wb") as f:
-            pickle.dump(time_report, f)
+        training_summary = {
+        "time_report": time_report,
+        "env_step": self.step_count 
+        }
 
-    def close(self):
-        self.writer.close()
+        with open(os.path.join(save_dir, "training_summary.pkl"), "wb") as f:
+            pickle.dump(training_summary, f)
+    
+    def save(self, filename = None, save_dir = None):
+        if save_dir is None:
+            save_dir = self.work_dir
+        if filename is None:
+            filename = 'best_policy'
+        torch.save([self.agent.actor, self.agent.critic, self.agent.critic_target], os.path.join(save_dir, "{}.pt".format(filename)))
+
 
 @hydra.main(config_path='cfg/drqv2', config_name='config')
 def main(cfg):

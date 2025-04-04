@@ -28,6 +28,7 @@ from dm_env import specs
 import envs
 from viewer.dmc_viewer import DMCViewer
 from utils.time_report import TimeReport
+from utils.average_meter import AverageMeter
 from utils.common import *
 
 import torch
