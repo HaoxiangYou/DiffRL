@@ -386,7 +386,7 @@ class Workspace:
             
             # logging
             self.time_report.start_timer("IO Time")
-            time_elapse = time.time() - self.start_time
+            time_elapse = time.time() - self.start_time - self.time_report.timers["evaluation time"].time_total
             if (len(self.episode_loss_his) > 0):
                 mean_policy_loss = self.episode_loss_meter.get_mean()
                 mean_episode_length = self.episode_length_meter.get_mean()

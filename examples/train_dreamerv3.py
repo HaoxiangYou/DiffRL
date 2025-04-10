@@ -338,12 +338,12 @@ def save_training_summary(in_time_report, optinal_value=None ,save_dir = None):
 def main(config):
     time_report = TimeReport()
     time_report.add_timer("algorithm")
+    time_report.add_timer("forward simulation")
+    time_report.add_timer("backward simulation")
     time_report.add_timer("actor training")
     time_report.add_timer("critic training")
-    time_report.add_timer("evaluation time") 
-    time_report.add_timer("actor action time")    
-    time_report.start_timer("algorithm")
-
+    time_report.add_timer("evaluation time")  
+    
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:
         tools.enable_deterministic_run()
@@ -440,6 +440,7 @@ def main(config):
         agent._should_pretrain._once = False
 
     # make sure eval will be executed once after config.steps
+    time_report.start_timer("algorithm")
     while agent._step < config.steps + config.eval_every:
         logger.write()
         if config.eval_episode_num > 0:
@@ -456,10 +457,10 @@ def main(config):
                 episodes=config.eval_episode_num,
                 time_report=time_report,
             )
-            time_report.end_timer("evaluation time")
             if config.video_pred_log:
                 video_pred = agent._wm.video_pred(next(eval_dataset))
                 logger.video("eval_openl", to_np(video_pred))
+            time_report.end_timer("evaluation time")
         print("Start training.")
         time_report.start_timer("actor training")
         state = tools.simulate(

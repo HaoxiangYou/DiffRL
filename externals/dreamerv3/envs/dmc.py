@@ -128,8 +128,3 @@ class DeepMindControlDflex:
         obs["is_terminal"] = False if time_step.first() else time_step.discount == 0
         obs["is_first"] = time_step.first()
         return obs
-
-    # def render(self, *args, **kwargs):
-    #     if kwargs.get("mode", "rgb_array") != "rgb_array":
-    #         raise ValueError("Only render mode 'rgb_array' is supported.")
-    #     return self._env.physics.render(*self._size, camera_id=self._camera)
