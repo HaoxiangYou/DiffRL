@@ -343,6 +343,7 @@ def main(config):
     time_report.add_timer("actor training")
     time_report.add_timer("critic training")
     time_report.add_timer("evaluation time")  
+    time_report.add_timer("IO time")
     
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:
@@ -441,6 +442,7 @@ def main(config):
 
     # make sure eval will be executed once after config.steps
     time_report.start_timer("algorithm")
+    algo_start_time = time.time()
     while agent._step < config.steps + config.eval_every:
         logger.write()
         if config.eval_episode_num > 0:
@@ -455,14 +457,13 @@ def main(config):
                 logger,
                 is_eval=True,
                 episodes=config.eval_episode_num,
-                time_report=time_report,
+                time_report=None,
             )
             if config.video_pred_log:
                 video_pred = agent._wm.video_pred(next(eval_dataset))
                 logger.video("eval_openl", to_np(video_pred))
             time_report.end_timer("evaluation time")
         print("Start training.")
-        time_report.start_timer("actor training")
         state = tools.simulate(
             agent,
             train_envs,
@@ -473,8 +474,8 @@ def main(config):
             steps=config.eval_every,
             state=state,
             time_report=time_report,
+            algo_start_time=algo_start_time,
         )
-        time_report.end_timer("actor training")
         items_to_save = {
             "agent_state_dict": agent.state_dict(),
             "optims_state_dict": tools.recursively_collect_optim_state_dict(agent),
