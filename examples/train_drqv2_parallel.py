@@ -295,10 +295,15 @@ class Workspace:
         self.start_time = time.time()
         # add timers
         self.time_report.add_timer("algorithm")
+        self.time_report.add_timer("forward simulation")
+        self.time_report.add_timer("backward simulation")
         self.time_report.add_timer("actor training")
         self.time_report.add_timer("critic training")
         self.time_report.add_timer("evaluation time") 
-        self.time_report.add_timer("actor action time")
+        self.time_report.add_timer("env step time")
+        self.time_report.add_timer("IO Time")
+        self.time_report.add_timer("sample from replay buffer")
+        self.time_report.add_timer("save snapshot")
         
         self.time_report.start_timer("algorithm")
 
@@ -310,52 +315,73 @@ class Workspace:
                                       self.cfg.action_repeat)
 
         actor_step, episode_step, episode_reward = 0, 0, 0
+        self.time_report.start_timer("IO Time")
         time_steps = self.train_env.reset(env_ids = None, force_reset = True)
         self.process_time_steps(time_steps)
+        self.time_report.end_timer("IO Time")
 
         while train_until_step(self.global_step):
             # try to evaluate
             if eval_every_step(self.step_count):
                 print_info("Start Evaluation with maximum trajectory length:{}".format(torch.max(self.episode_length).item()))
                 eval_start_time = time.time()
+
                 self.time_report.start_timer("evaluation time")
                 save_dir = os.path.join(self.work_dir, "eval/iter_{}".format(episode_step))
                 mean_eval_policy_loss = self.eval(file_name="iter_{}".format(episode_step))
-                self.time_report.end_timer("evaluation time")
+                
                 self.save(save_dir=save_dir, filename=self.cfg["params"]["diff_env"]["name"] + "policy_iter{}_reward{:.3f}".format(episode_step, -mean_eval_policy_loss))
                 self.save_training_summary(save_dir=save_dir)
+                self.time_report.end_timer("evaluation time")
                 print_info("Evaluation done in {} seconds".format(time.time()-eval_start_time))
 
             time_start_epoch = time.time()
             # sample action
             # output action with shape (num_envs, action_size)
             with torch.no_grad(), utils.eval_mode(self.agent):
-                actions = self.agent.act(torch.from_numpy(np.array([time_step.observation for time_step in time_steps], dtype=np.uint8)).to(self.device), 
+                self.time_report.start_timer("IO Time")
+                obs = torch.from_numpy(np.array([time_step.observation for time_step in time_steps], dtype=np.uint8)).to(self.device)
+                self.time_report.end_timer("IO Time")
+                actions = self.agent.act(obs, 
                                         self.global_step,
-                                        eval_mode=False)
+                                        eval_mode=False,
+                                        time_report = self.time_report)
             
             # try to update the agent
+            self.time_report.start_timer("backward simulation")
             if not seed_until_step(self.global_step):
                 for i in range(self.global_step, self.global_step + self.num_envs):
                     metrics = self.agent.update(self.replay_iter, i, self.time_report)
+                self.time_report.start_timer("save snapshot")
                 self.save_snapshot()
+                self.time_report.end_timer("save snapshot")
                 actor_step += 1
                 self._num_episode_finished = 0
+            self.time_report.end_timer("backward simulation")
 
             # take env step       
             time_start_steps = time.time()
+            self.time_report.start_timer("forward simulation")
+            self.time_report.start_timer("env step time")
             time_steps = self.train_env.step(actions=actions, 
                                              enable_reset = False, 
                                              enable_vis_obs = True)
+            self.time_report.end_timer("env step time")
+            self.time_report.end_timer("forward simulation")
+
+            self.time_report.start_timer("IO Time")
             time_end_steps = time.time()
             episode_reward += np.sum([time_step.reward for time_step in time_steps])
+            
             self.process_time_steps(time_steps)
+            self.time_report.end_timer("IO Time")
             self.step_count += self.num_envs * self.cfg.action_repeat
             episode_step += 1
 
             self._global_step += self.num_envs
             
             # logging
+            self.time_report.start_timer("IO Time")
             time_elapse = time.time() - self.start_time
             if (len(self.episode_loss_his) > 0):
                 mean_policy_loss = self.episode_loss_meter.get_mean()
@@ -370,6 +396,7 @@ class Workspace:
             else:
                 mean_policy_loss = np.inf
                 mean_episode_length = 0
+            self.time_report.end_timer("IO Time")
 
             self.writer.flush()
             time_end_epoch = time.time()
@@ -379,7 +406,6 @@ class Workspace:
         self.time_report.end_timer("algorithm")
         self.time_report.report()
         self.save_training_summary()
-        self.close()
 
     def save_snapshot(self):
         snapshot = self.work_dir / 'snapshot.pt'

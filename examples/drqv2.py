@@ -159,8 +159,15 @@ class DrQV2Agent:
         self.actor.train(training)
         self.critic.train(training)
 
-    def act(self, obs, step, eval_mode):
+    def act(self, obs, step, eval_mode, time_report=None):
+        if time_report is not None:
+            time_report.start_timer("IO Time")
         obs = torch.as_tensor(obs, device=self.device)
+        if time_report is not None:
+            time_report.end_timer("IO Time")
+
+        if time_report is not None:
+            time_report.start_timer("forward simulation")
         if len(obs.shape) == 3:
             obs = self.encoder(obs.unsqueeze(0))
         elif len(obs.shape) == 4:
@@ -175,6 +182,8 @@ class DrQV2Agent:
             action = dist.sample(clip=None)
             if step < self.num_expl_steps:
                 action.uniform_(-1.0, 1.0)
+        if time_report is not None:
+            time_report.end_timer("forward simulation")
         return action.cpu().numpy()
 
     def update_critic(self, obs, action, reward, discount, next_obs, step):
@@ -247,7 +256,6 @@ class DrQV2Agent:
         obs = self.encoder(obs)
         with torch.no_grad():
             next_obs = self.encoder(next_obs)
-
         if self.use_tb:
             metrics['batch_reward'] = reward.mean().item()
 
