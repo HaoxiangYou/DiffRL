@@ -302,8 +302,6 @@ class Workspace:
         self.time_report.add_timer("evaluation time") 
         self.time_report.add_timer("env step time")
         self.time_report.add_timer("IO Time")
-        self.time_report.add_timer("sample from replay buffer")
-        self.time_report.add_timer("save snapshot")
         
         self.time_report.start_timer("algorithm")
 
@@ -312,6 +310,8 @@ class Workspace:
         seed_until_step = utils.Until(self.cfg.num_seed_frames,
                                       self.cfg.action_repeat)
         eval_every_step = utils.Every(self.cfg.eval_every_frames,
+                                      self.cfg.action_repeat)
+        save_every_step = utils.Every(self.cfg.save_every_frames,
                                       self.cfg.action_repeat)
 
         actor_step, episode_step, episode_reward = 0, 0, 0
@@ -352,12 +352,13 @@ class Workspace:
             if not seed_until_step(self.global_step):
                 for i in range(self.global_step, self.global_step + self.num_envs):
                     metrics = self.agent.update(self.replay_iter, i, self.time_report)
-                self.time_report.start_timer("save snapshot")
-                self.save_snapshot()
-                self.time_report.end_timer("save snapshot")
                 actor_step += 1
                 self._num_episode_finished = 0
             self.time_report.end_timer("backward simulation")
+
+            # if self.cfg.save_snapshot and save_every_step(self.step_count):
+            #     self.save_snapshot()
+            #     print_info("Snapshot saved at step {}".format(self.step_count))
 
             # take env step       
             time_start_steps = time.time()

@@ -15,6 +15,7 @@ eval_every_frames: 10000
 num_eval_episodes: 10 # 1 
 # snapshot
 save_snapshot: false
+save_every_frames: 100000
 # replay buffer
 replay_buffer_size: 1000000
 replay_buffer_num_workers: 2
