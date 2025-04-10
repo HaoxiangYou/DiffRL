@@ -302,6 +302,7 @@ class Workspace:
         self.time_report.add_timer("evaluation time") 
         self.time_report.add_timer("env step time")
         self.time_report.add_timer("IO Time")
+        self.time_report.add_timer("save snapshot")
         
         self.time_report.start_timer("algorithm")
 
@@ -356,9 +357,11 @@ class Workspace:
                 self._num_episode_finished = 0
             self.time_report.end_timer("backward simulation")
 
-            # if self.cfg.save_snapshot and save_every_step(self.step_count):
-            #     self.save_snapshot()
-            #     print_info("Snapshot saved at step {}".format(self.step_count))
+            if self.cfg.save_snapshot and save_every_step(episode_step):
+                self.time_report.start_timer("save snapshot")
+                self.save_snapshot()
+                self.time_report.end_timer("save snapshot")
+                print_info("Snapshot saved at step {}".format(episode_step))
 
             # take env step       
             time_start_steps = time.time()
