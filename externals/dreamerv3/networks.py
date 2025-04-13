@@ -7,7 +7,7 @@ from torch import nn
 import torch.nn.functional as F
 from torch import distributions as torchd
 
-import tools
+import externals.dreamerv3.tools as tools
 
 
 class RSSM(nn.Module):

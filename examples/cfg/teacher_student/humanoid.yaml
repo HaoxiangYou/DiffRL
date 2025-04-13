@@ -19,7 +19,7 @@ params:
     lr_schedule: linear # ['constant', 'linear']
     num_actors: 64
     steps_num: 32
-    max_epochs: 1000
+    max_epochs: 40000
     num_update_per_epoch: 2000
     batch_size: 128
     learning_starts: 32000

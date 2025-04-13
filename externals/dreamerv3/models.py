@@ -2,8 +2,8 @@ import copy
 import torch
 from torch import nn
 
-import networks
-import tools
+import externals.dreamerv3.networks as networks
+import externals.dreamerv3.tools as tools   
 
 to_np = lambda x: x.detach().cpu().numpy()
 
@@ -105,15 +105,18 @@ class WorldModel(nn.Module):
             cont=config.cont_head["loss_scale"],
         )
 
-    def _train(self, data):
+    def _train(self, data, time_report):
         # action (batch_size, batch_length, act_dim)
         # image (batch_size, batch_length, h, w, ch)
         # reward (batch_size, batch_length)
         # discount (batch_size, batch_length)
+        time_report.start_timer("IO time")
         data = self.preprocess(data)
 
         with tools.RequiresGrad(self):
-            with torch.cuda.amp.autocast(self._use_amp):
+            time_report.end_timer("IO time")
+            time_report.start_timer("forward simulation")
+            with torch.cuda.amp.autocast(self._use_amp):    
                 embed = self.encoder(data)
                 post, prior = self.dynamics.observe(
                     embed, data["action"], data["is_first"]
@@ -145,8 +148,14 @@ class WorldModel(nn.Module):
                     for key, value in losses.items()
                 }
                 model_loss = sum(scaled.values()) + kl_loss
+            time_report.end_timer("forward simulation")
+            time_report.start_timer("backward simulation")
+            time_report.start_timer("world model training")
             metrics = self._model_opt(torch.mean(model_loss), self.parameters())
+            time_report.end_timer("world model training")
+            time_report.end_timer("backward simulation")
 
+        time_report.start_timer("IO time")
         metrics.update({f"{name}_loss": to_np(loss) for name, loss in losses.items()})
         metrics["kl_free"] = kl_free
         metrics["dyn_scale"] = dyn_scale
@@ -168,6 +177,7 @@ class WorldModel(nn.Module):
                 postent=self.dynamics.get_dist(post).entropy(),
             )
         post = {k: v.detach() for k, v in post.items()}
+        time_report.end_timer("IO time")
         return post, context, metrics
 
     # this function is called during both rollout and training
@@ -288,12 +298,15 @@ class ImagBehavior(nn.Module):
         self,
         start,
         objective,
+        time_report,
     ):
+        time_report.start_timer("forward simulation")
         self._update_slow_target()
         metrics = {}
-
+        
         with tools.RequiresGrad(self.actor):
             with torch.cuda.amp.autocast(self._use_amp):
+                
                 imag_feat, imag_state, imag_action = self._imagine(
                     start, self.actor, self._config.imag_horizon
                 )
@@ -315,7 +328,9 @@ class ImagBehavior(nn.Module):
                 actor_loss = torch.mean(actor_loss)
                 metrics.update(mets)
                 value_input = imag_feat
+        time_report.end_timer("forward simulation")
 
+        time_report.start_timer("backward simulation")
         with tools.RequiresGrad(self.value):
             with torch.cuda.amp.autocast(self._use_amp):
                 value = self.value(value_input[:-1].detach())
@@ -341,8 +356,13 @@ class ImagBehavior(nn.Module):
             metrics.update(tools.tensorstats(imag_action, "imag_action"))
         metrics["actor_entropy"] = to_np(torch.mean(actor_ent))
         with tools.RequiresGrad(self):
+            time_report.start_timer("actor training")
             metrics.update(self._actor_opt(actor_loss, self.actor.parameters()))
+            time_report.end_timer("actor training")
+            time_report.start_timer("critic training")
             metrics.update(self._value_opt(value_loss, self.value.parameters()))
+            time_report.end_timer("critic training")
+        time_report.end_timer("backward simulation")
         return imag_feat, imag_state, imag_action, weights, metrics
 
     def _imagine(self, start, policy, horizon):

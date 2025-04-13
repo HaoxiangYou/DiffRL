@@ -1,10 +1,10 @@
-num_train_frames: 3100000
+num_train_frames: 30100000
 stddev_schedule: 'linear(1.0,0.1,500000)'
 
 params:  
   diff_env:
     name: AntEnv
-    stochastic_env: False # True
+    stochastic_env: True
     episode_length: 1000
     MM_caching_frequency: 16
 
@@ -22,7 +22,7 @@ params:
   general:
     device: cuda:0
     render: False 
-    seed: 0
+    seed: 300
     train: True
     
   config:
@@ -44,7 +44,7 @@ params:
     steps_num: 32
     grad_norm: 1.0 
     truncate_grads: True 
-    num_actors: 64
+    num_actors: 32
     # visual observation related
     vis_obs: True
     img_height: 84
