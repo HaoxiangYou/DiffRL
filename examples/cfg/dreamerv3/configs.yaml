@@ -104,8 +104,9 @@ dmc_proprio:
 
 dflex_vision:
   steps: 1e2 # 1e6
+  eval_every: 6e3 # 1e4
   action_repeat: 2
-  envs: 1
+  envs: 4
   train_ratio: 512
   video_pred_log: true
   encoder: {mlp_keys: '$^', cnn_keys: 'image'}

@@ -24,7 +24,7 @@ params:
   general:
     device: cuda:0
     render: False 
-    seed: 0
+    seed: 400
     train: True
   
   config:

@@ -22,7 +22,7 @@ params:
   general:
     device: cuda:0
     render: False 
-    seed: 0
+    seed: 300
     train: True
     
   config:
@@ -44,7 +44,7 @@ params:
     steps_num: 32
     grad_norm: 1.0 
     truncate_grads: True 
-    num_actors: 4
+    num_actors: 32
     # visual observation related
     vis_obs: True
     img_height: 84

@@ -153,7 +153,9 @@ def simulate(
         step, episode, done, length, obs, agent_state, reward = state
     if not is_eval:
         time_report.end_timer("IO time")
+
     while (steps and step < steps) or (episodes and episode < episodes):
+        # steps is constant: 1e4\
         # reset envs if necessary
         if not is_eval:
             time_report.start_timer("IO time")
@@ -171,17 +173,18 @@ def simulate(
                 add_to_cache(cache, envs[index].id, t)
                 # replace obs with done by initial state
                 obs[index] = result
+        # step agents
+        obs = {k: np.stack([o[k] for o in obs]) for k in obs[0] if "log_" not in k}
         if not is_eval:
             time_report.end_timer("IO time")
 
-        # step agents
+        action, agent_state = agent(obs=obs, 
+                                    reset=done, 
+                                    state=agent_state,
+                                    time_report = time_report)
+        
         if not is_eval:
-            time_report.start_timer("backward simulation")
-        obs = {k: np.stack([o[k] for o in obs]) for k in obs[0] if "log_" not in k}
-        action, agent_state = agent(obs, done, agent_state)
-        if not is_eval:
-            time_report.end_timer("backward simulation")
-
+            time_report.start_timer("IO time")
         if isinstance(action, dict):
             action = [
                 {k: np.array(action[k][i].detach().cpu()) for k in action}
@@ -190,11 +193,17 @@ def simulate(
         else:
             action = np.array(action)
         assert len(action) == len(envs)
+        if not is_eval:
+            time_report.end_timer("IO time")
 
         # step envs
         if not is_eval:
             time_report.start_timer("forward simulation")
+            time_report.start_timer("dflex step")
         results = [e.step(a) for e, a in zip(envs, action)]
+        if not is_eval:
+            time_report.end_timer("dflex step")
+
         results = [r() for r in results]
         obs, reward, done = zip(*[p[:3] for p in results])
         obs = list(obs)
@@ -204,11 +213,11 @@ def simulate(
         length += 1
         step += len(envs)
         length *= 1 - done
+
         if not is_eval:
             time_report.end_timer("forward simulation")
-        # add to cache
-        if not is_eval:
             time_report.start_timer("IO time")
+        # add to cache
         for a, result, env in zip(action, results, envs):
             o, r, d, info = result
             o = {k: convert(v) for k, v in o.items()}
@@ -222,10 +231,8 @@ def simulate(
             add_to_cache(cache, env.id, transition)
         if not is_eval:
             time_report.end_timer("IO time")
-
+            time_report.start_timer("Logger time")
         if done.any():
-            if not is_eval:
-                time_report.start_timer("IO time")
             indices = [index for index, d in enumerate(done) if d]
             # logging for done episode
             for i in indices:
@@ -248,7 +255,7 @@ def simulate(
                     logger.scalar(f"train_return", score)
                     logger.scalar(f"train_length", length)
                     logger.scalar(f"train_episodes", len(cache))
-                    time_elapsed = time.time() - algo_start_time - time_report.timers["evaluation"].time_total
+                    time_elapsed = time.time() - algo_start_time - time_report.timers["evaluation time"].time_total
                     # log reward with env step for later comparision
                     logger.scalar(f'rewards/step', score)
                     logger.scalar(f'rewards/time', time_elapsed)
@@ -261,7 +268,6 @@ def simulate(
                     # start counting scores for evaluation
                     eval_scores.append(score)
                     eval_lengths.append(length)
-
                     score = sum(eval_scores) / len(eval_scores)
                     length = sum(eval_lengths) / len(eval_lengths)
                     logger.video(f"eval_policy", np.array(video)[None])
@@ -272,8 +278,9 @@ def simulate(
                         logger.scalar(f"eval_episodes", len(eval_scores))
                         logger.write(step=logger.step)
                         eval_done = True
-            if not is_eval:
-                time_report.end_timer("IO time")
+        if not is_eval:
+            time_report.end_timer("Logger time")
+
     if is_eval:
         # keep only last item for saving memory. this cache is used for video_pred later
         while len(cache) > 1:

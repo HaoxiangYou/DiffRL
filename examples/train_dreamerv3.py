@@ -163,18 +163,26 @@ class Dreamer(nn.Module):
             plan2explore=lambda: expl.Plan2Explore(config, self._wm, reward),
         )[config.expl_behavior]().to(self._config.device)
 
-    def __call__(self, obs, reset, state=None, training=True):
+    def __call__(self, obs, reset, state=None, training=True, time_report=None):
         step = self._step
         if training:
+            time_report.start_timer("IO time")
             steps = (
                 self._config.pretrain
                 if self._should_pretrain()
                 else self._should_train(step)
             )
+            time_report.end_timer("IO time")
+            
             for _ in range(steps):
-                self._train(next(self._dataset))
+                time_report.start_timer("IO time")
+                data = next(self._dataset)
+                time_report.end_timer("IO time")
+                self._train(data, time_report)
                 self._update_count += 1
                 self._metrics["update_count"] = self._update_count
+
+            time_report.start_timer("Logger time")
             if self._should_log(step):
                 for name, values in self._metrics.items():
                     self._logger.scalar(name, float(np.mean(values)))
@@ -183,9 +191,12 @@ class Dreamer(nn.Module):
                     openl = self._wm.video_pred(next(self._dataset))
                     self._logger.video("train_openl", to_np(openl))
                 self._logger.write(fps=True)
-
+            time_report.end_timer("Logger time")
+        if training:
+            time_report.start_timer("forward simulation")
         policy_output, state = self._policy(obs, state, training)
-
+        if training:
+            time_report.end_timer("forward simulation")
         if training:
             self._step += len(reset)
             self._logger.step = self._config.action_repeat * self._step
@@ -222,15 +233,20 @@ class Dreamer(nn.Module):
         state = (latent, action)
         return policy_output, state
 
-    def _train(self, data):
-        metrics = {}
-        post, context, mets = self._wm._train(data)
+    def _train(self, data, time_report):
+        metrics = {}  
+        post, context, mets = self._wm._train(data, time_report)
+        time_report.start_timer("forward simulation")
         metrics.update(mets)
         start = post
         reward = lambda f, s, a: self._wm.heads["reward"](
             self._wm.dynamics.get_feat(s)
         ).mode()
-        metrics.update(self._task_behavior._train(start, reward)[-1])
+        time_report.end_timer("forward simulation")   
+        
+        metrics.update(self._task_behavior._train(start, reward, time_report)[-1])
+
+        time_report.start_timer("forward simulation")
         if self._config.expl_behavior != "greedy":
             mets = self._expl_behavior.train(start, context, data)[-1]
             metrics.update({"expl_" + key: value for key, value in mets.items()})
@@ -239,7 +255,7 @@ class Dreamer(nn.Module):
                 self._metrics[name] = [value]
             else:
                 self._metrics[name].append(value)
-
+        time_report.end_timer("forward simulation")
 
 def count_steps(folder):
     return sum(int(str(n).split("-")[-1][:-4]) - 1 for n in folder.glob("*.npz"))
@@ -339,12 +355,16 @@ def main(config):
     time_report = TimeReport()
     time_report.add_timer("algorithm")
     time_report.add_timer("forward simulation")
+    time_report.add_timer("dflex step")
     time_report.add_timer("backward simulation")
     time_report.add_timer("actor training")
     time_report.add_timer("critic training")
-    time_report.add_timer("evaluation time")  
+    time_report.add_timer("world model training")
+    time_report.add_timer("evaluation time")
+    time_report.add_timer("prefill dataset")  
     time_report.add_timer("IO time")
-    
+    time_report.add_timer("Logger time")
+
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:
         tools.enable_deterministic_run()
@@ -355,6 +375,7 @@ def main(config):
     config.eval_every //= config.action_repeat
     config.log_every //= config.action_repeat
     config.time_limit //= config.action_repeat
+    time_report_dir = logdir / "time_reports"
 
     print("Logdir", logdir)
     logdir.mkdir(parents=True, exist_ok=True)
@@ -388,6 +409,10 @@ def main(config):
     print("Action Space", acts)
     config.num_actions = acts.n if hasattr(acts, "n") else acts.shape[0]
 
+    time_report.start_timer("algorithm")
+    time_report.start_timer("prefill dataset")
+    algo_start_time = time.time()
+
     state = None
     if not config.offline_traindir:
         prefill = max(0, config.prefill - count_steps(config.traindir))
@@ -405,7 +430,7 @@ def main(config):
                 1,
             )
 
-        def random_agent(o, d, s):
+        def random_agent(obs, reset, state, time_report):
             action = random_actor.sample()
             logprob = random_actor.log_prob(action)
             return {"action": action, "logprob": logprob}, None
@@ -418,7 +443,9 @@ def main(config):
             logger,
             limit=config.dataset_size,
             steps=prefill,
-            time_report=time_report,
+            is_eval=True,
+            time_report=None,
+            algo_start_time=algo_start_time,
         )
         logger.step += prefill * config.action_repeat
         print(f"Logger: ({logger.step} steps).")
@@ -439,15 +466,16 @@ def main(config):
         agent.load_state_dict(checkpoint["agent_state_dict"])
         tools.recursively_load_optim_state_dict(agent, checkpoint["optims_state_dict"])
         agent._should_pretrain._once = False
-
+    
+    time_report.end_timer("prefill dataset")
     # make sure eval will be executed once after config.steps
-    time_report.start_timer("algorithm")
-    algo_start_time = time.time()
     while agent._step < config.steps + config.eval_every:
+        time_report.start_timer("Logger time")
         logger.write()
+        time_report.end_timer("Logger time")
+        time_report.start_timer("evaluation time")
         if config.eval_episode_num > 0:
             print("Start evaluation.")
-            time_report.start_timer("evaluation time")
             eval_policy = functools.partial(agent, training=False)
             tools.simulate(
                 eval_policy,
@@ -462,8 +490,9 @@ def main(config):
             if config.video_pred_log:
                 video_pred = agent._wm.video_pred(next(eval_dataset))
                 logger.video("eval_openl", to_np(video_pred))
-            time_report.end_timer("evaluation time")
+        time_report.end_timer("evaluation time")
         print("Start training.")
+
         state = tools.simulate(
             agent,
             train_envs,
@@ -476,20 +505,35 @@ def main(config):
             time_report=time_report,
             algo_start_time=algo_start_time,
         )
+        time_report.start_timer("IO time")
         items_to_save = {
             "agent_state_dict": agent.state_dict(),
             "optims_state_dict": tools.recursively_collect_optim_state_dict(agent),
         }
         torch.save(items_to_save, logdir / "latest.pt")
+        time_report.end_timer("IO time")
     time_report.end_timer("algorithm")
     time_report.report()
-    # save_training_summary()
+    save_training_summary(time_report, agent._step, time_report_dir/f"steps_{agent._step}")
     for env in train_envs + eval_envs:
         try:
             env.close()
         except Exception:
             pass
 
+def save_training_summary(current_time_report, step_count, save_dir):
+        save_dir.mkdir(parents=True, exist_ok=True)
+        time_report = {}
+        for timer_name in current_time_report.timers.keys():
+            time_report.update({timer_name: current_time_report.timers[timer_name].time_total})
+
+        training_summary = {
+        "time_report": time_report,
+        "env_step": step_count 
+        }
+
+        with open(os.path.join(str(save_dir), "training_summary.pkl"), "wb") as f:
+            pickle.dump(training_summary, f)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
