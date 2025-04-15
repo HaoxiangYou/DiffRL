@@ -74,7 +74,7 @@ class Logger:
     def video(self, name, value):
         self._videos[name] = np.array(value)
 
-    def write_time(self, name, step, value):
+    def write_time(self, name, value, step):
         self._writer.add_scalar(name, value, step)
 
     def write(self, fps=False, step=False):
@@ -258,11 +258,10 @@ def simulate(
                     logger.scalar(f"train_return", score)
                     logger.scalar(f"train_length", length)
                     logger.scalar(f"train_episodes", len(cache))
-                    time_elapsed = time.time() - algo_start_time - time_report.timers["evaluation time"].time_total
+                    time_elapsed = time.time() - algo_start_time - time_report.timers["evaluation time"].time_total - time_report.timers["prefill dataset"].time_total
                     # log reward with env step for later comparision
                     logger.scalar(f'rewards/step', score)
-                    logger.write_time(f'rewards/time', time_elapsed, score)
-                    logger.scalar(f'rewards/time', time_elapsed)
+                    logger.write_time(f'rewards/time', score, time_elapsed)
                     logger.write(step=logger.step)
                 else:
                     if not "eval_lengths" in locals():
