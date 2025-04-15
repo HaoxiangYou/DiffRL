@@ -11,80 +11,100 @@ import torch
 import argparse
 import os
 import math
-import gym
 import sys
 import random
 import time
 import json
 import dmc2gym
 import copy
-
+import yaml
+import envs
+from viewer.dmc_viewer import DMCViewer
 import externals.curl.utils as utils
 from externals.curl.logger import Logger
 from externals.curl.video import VideoRecorder
 
 from externals.curl.curl_sac import CurlSacAgent
 from torchvision import transforms
+import dm_env
+from gymnasium import core, spaces
 
+
+class GymEnvWrapperfromdFlex(core.Env):
+    def __init__(self, env, cfg):
+        self.env = env
+        self.num_envs = self.env.num_envs
+        self.num_actions = self.env.num_actions
+        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
+        self.camera_id = 0 # render camera id. 
+        self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
+        self.dmc_render_model = cfg["params"]["general"]["dmc_render_model"]
+        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
+                                            camera_id=0, height=self.render_size, width=self.render_size)
+        self.raw_rew = np.zeros((self.env.num_envs)) 
+        self.device = cfg["params"]["general"]["device"]
+
+        self._observation_space = spaces.Box(shape=self.env.num_vis_obs,
+                                                low= 0,
+                                                high= 255,
+                                                dtype='uint8')
+        # overwrite action space for parallel computation
+        self._action_space = spaces.Box(shape=(self.num_envs, self.env.num_actions),
+                                                low=-1,
+                                                high=1,
+                                                dtype='float32')
+    
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        # return stacked observation (9 * width * height)
+        self.env.clear_grad()
+        obs = self.env.reset(env_ids=env_ids, 
+                             force_reset=force_reset,
+                             enable_vis_obs=enable_vis_obs)
+        reset_obs = obs["vis_obs"].detach().clone().cpu().numpy().astype("uint8")
+        return reset_obs
+
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        obs, rew_batch, done_batch, extra_info = self.env.step(actions = torch.tanh(torch.tensor(actions, dtype = torch.float32, device = self.device)), 
+                                                               enable_reset = enable_reset, 
+                                                               enable_vis_obs = enable_vis_obs)
+        del extra_info
+        self.raw_rew[:] = rew_batch.detach().clone().cpu().numpy()
+        next_vis_obs = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
+        return next_vis_obs, rew_batch.detach().clone().cpu().numpy(), done_batch.detach().clone().cpu().numpy(), {}
+    
+    @property
+    def observation_space(self):
+        return self._observation_space
+    
+    @property
+    def action_space(self):
+        return self._action_space
+    
+    def render(self):
+        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
+        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
+        
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    # environment
-    parser.add_argument('--domain_name', default='cheetah')
-    parser.add_argument('--task_name', default='run')
-    parser.add_argument('--pre_transform_image_size', default=100, type=int)
-
-    parser.add_argument('--image_size', default=84, type=int)
-    parser.add_argument('--action_repeat', default=1, type=int)
-    parser.add_argument('--frame_stack', default=3, type=int)
-    # replay buffer
-    parser.add_argument('--replay_buffer_capacity', default=100000, type=int)
-    # train
-    parser.add_argument('--agent', default='curl_sac', type=str)
-    parser.add_argument('--init_steps', default=1000, type=int)
-    parser.add_argument('--num_train_steps', default=1000000, type=int)
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--hidden_dim', default=1024, type=int)
-    # eval
-    parser.add_argument('--eval_freq', default=1000, type=int)
-    parser.add_argument('--num_eval_episodes', default=10, type=int)
-    # critic
-    parser.add_argument('--critic_lr', default=1e-3, type=float)
-    parser.add_argument('--critic_beta', default=0.9, type=float)
-    parser.add_argument('--critic_tau', default=0.01, type=float) # try 0.05 or 0.1
-    parser.add_argument('--critic_target_update_freq', default=2, type=int) # try to change it to 1 and retain 0.01 above
-    # actor
-    parser.add_argument('--actor_lr', default=1e-3, type=float)
-    parser.add_argument('--actor_beta', default=0.9, type=float)
-    parser.add_argument('--actor_log_std_min', default=-10, type=float)
-    parser.add_argument('--actor_log_std_max', default=2, type=float)
-    parser.add_argument('--actor_update_freq', default=2, type=int)
-    # encoder
-    parser.add_argument('--encoder_type', default='pixel', type=str)
-    parser.add_argument('--encoder_feature_dim', default=50, type=int)
-    parser.add_argument('--encoder_lr', default=1e-3, type=float)
-    parser.add_argument('--encoder_tau', default=0.05, type=float)
-    parser.add_argument('--num_layers', default=4, type=int)
-    parser.add_argument('--num_filters', default=32, type=int)
-    parser.add_argument('--curl_latent_dim', default=128, type=int)
-    # sac
-    parser.add_argument('--discount', default=0.99, type=float)
-    parser.add_argument('--init_temperature', default=0.1, type=float)
-    parser.add_argument('--alpha_lr', default=1e-4, type=float)
-    parser.add_argument('--alpha_beta', default=0.5, type=float)
-    # misc
-    parser.add_argument('--seed', default=1, type=int)
-    parser.add_argument('--work_dir', default='.', type=str)
-    parser.add_argument('--save_tb', default=False, action='store_true')
-    parser.add_argument('--save_buffer', default=False, action='store_true')
-    parser.add_argument('--save_video', default=False, action='store_true')
-    parser.add_argument('--save_model', default=False, action='store_true')
-    parser.add_argument('--detach_encoder', default=False, action='store_true')
-
-    parser.add_argument('--log_interval', default=100, type=int)
+    parser.add_argument('--log_dir', default='.', type=str)
+    parser.add_argument('--cfg', default='./cfg/curl/hopper.yaml', type=str)
     args = parser.parse_args()
     return args
 
+def load_env(cfg, eval=False):
+    env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
+    env =  env_fn(num_envs = 1 if eval else cfg["params"]["general"]["num_actors"], \
+                            device = cfg["params"]["general"]["device"], \
+                            img_height = cfg["params"]["general"].get("pre_transform_image_size", 100),\
+                            img_width = cfg["params"]["general"].get("pre_transform_image_size", 100),\
+                            seed = cfg["params"]["general"]["seed"], \
+                            episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
+                            stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
+                            MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
+                            no_grad = True)
+    env = GymEnvWrapperfromdFlex(env, cfg)
+    return env
 
 def evaluate(env, agent, video, num_episodes, L, step, args):
     all_ep_rewards = []
@@ -159,44 +179,52 @@ def make_agent(obs_shape, action_shape, args, device):
 
 def main():
     args = parse_args()
-    if args.seed == -1: 
-        args.__dict__["seed"] = np.random.randint(1,1000000)
-    utils.set_seed_everywhere(args.seed)
+    with open(args.cfg, 'r') as f:
+        cfg = yaml.load(f, Loader=yaml.SafeLoader)
 
-    env = dmc2gym.make(
-        domain_name=args.domain_name,
-        task_name=args.task_name,
-        seed=args.seed,
-        visualize_reward=False,
-        from_pixels=(args.encoder_type == 'pixel'),
-        height=args.pre_transform_image_size,
-        width=args.pre_transform_image_size,
-        frame_skip=args.action_repeat
-    )
- 
-    # env.seed(args.seed)
+    utils.set_seed_everywhere(cfg["params"]["general"]["seed"])
 
+    # env = dmc2gym.make(
+    #     domain_name=args.domain_name,
+    #     task_name=args.task_name,
+    #     seed=args.seed,
+    #     visualize_reward=False,
+    #     from_pixels=(args.encoder_type == 'pixel'),
+    #     height=args.pre_transform_image_size,
+    #     width=args.pre_transform_image_size,
+    #     frame_skip=args.action_repeat
+    # )
+    
+    train_env = load_env(cfg, eval=False)
+    eval_env = load_env(cfg, eval=True)
+    
+    obs = train_env.reset(env_ids = None, force_reset = True, enable_vis_obs=True)
+    action = train_env.action_space.sample()
+    next_obs, reward, done, _ = train_env.step(action, enable_reset = False, enable_vis_obs = True)
+    import pdb; pdb.set_trace()
+    
+    env.seed(args.seed)
     # stack several consecutive frames together
     if args.encoder_type == 'pixel':
         env = utils.FrameStack(env, k=args.frame_stack)
     env = utils.ActionDTypeWrapper(env, dtype=np.float32)
-    
+
     # make directory
     ts = time.gmtime() 
     ts = time.strftime("%m-%d", ts)    
     env_name = args.domain_name + '-' + args.task_name
     exp_name = env_name + '-' + ts + '-im' + str(args.image_size) +'-b'  \
     + str(args.batch_size) + '-s' + str(args.seed)  + '-' + args.encoder_type
-    args.work_dir = args.work_dir + '/'  + exp_name
+    args.log_dir = args.log_dir + '/'  + exp_name
 
-    utils.make_dir(args.work_dir)
-    video_dir = utils.make_dir(os.path.join(args.work_dir, 'video'))
-    model_dir = utils.make_dir(os.path.join(args.work_dir, 'model'))
-    buffer_dir = utils.make_dir(os.path.join(args.work_dir, 'buffer'))
+    utils.make_dir(args.log_dir)
+    video_dir = utils.make_dir(os.path.join(args.log_dir, 'video'))
+    model_dir = utils.make_dir(os.path.join(args.log_dir, 'model'))
+    buffer_dir = utils.make_dir(os.path.join(args.log_dir, 'buffer'))
 
     video = VideoRecorder(video_dir if args.save_video else None)
 
-    with open(os.path.join(args.work_dir, 'args.json'), 'w') as f:
+    with open(os.path.join(args.log_dir, 'args.json'), 'w') as f:
         json.dump(vars(args), f, sort_keys=True, indent=4)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -226,7 +254,7 @@ def main():
         device=device
     )
 
-    L = Logger(args.work_dir, use_tb=args.save_tb)
+    L = Logger(args.log_dir, use_tb=args.save_tb)
 
     episode, episode_reward, done = 0, 0, True
     start_time = time.time()
@@ -275,9 +303,6 @@ def main():
         next_obs, reward, done, _ = env.step(action)
 
         # allow infinit bootstrap
-        # done_bool = 0 if episode_step + 1 == env._max_episode_steps else float(
-        #     done
-        # )
         done_bool = 0 if episode_step + 1 == env.spec.max_episode_steps else float(
             done
         )
