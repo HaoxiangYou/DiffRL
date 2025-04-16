@@ -344,11 +344,11 @@ class CurlSacAgent(object):
     def select_action(self, obs):
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
-            obs = obs.unsqueeze(0)
+            # obs = obs.unsqueeze(0)
             mu, _, _, _ = self.actor(
                 obs, compute_pi=False, compute_log_pi=False
             )
-            return mu.cpu().data.numpy().flatten()
+            return mu.cpu().data.numpy() #.flatten()
 
     def sample_action(self, obs):
         if obs.shape[-1] != self.image_size:
@@ -356,9 +356,9 @@ class CurlSacAgent(object):
  
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
-            obs = obs.unsqueeze(0)
+            # obs = obs.unsqueeze(0)
             mu, pi, _, _ = self.actor(obs, compute_log_pi=False)
-            return pi.cpu().data.numpy().flatten()
+            return pi.cpu().data.numpy() #.flatten()
 
     def update_critic(self, obs, action, reward, next_obs, not_done, L, step):
         with torch.no_grad():

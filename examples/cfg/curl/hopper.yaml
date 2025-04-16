@@ -1,7 +1,7 @@
 params:  
   diff_env:
     name: HopperEnv
-    stochastic_env: True
+    stochastic_env: False
     episode_length: 1000
     MM_caching_frequency: 16
 
@@ -55,10 +55,10 @@ params:
   general:
     device: cuda:0
     dmc_render_model: hopper
-    num_actors: 2
+    num_actors: 16
     seed: 300
     image_size: 84
-    action_repeat: 1
+    action_repeat: 4
     frame_stack: 3
     replay_buffer_capacity: 100000
     pre_transform_image_size: 100
