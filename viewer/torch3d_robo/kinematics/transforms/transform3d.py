@@ -348,11 +348,6 @@ class Transform3d:
             denom = denom_sign * torch.clamp(denom.abs(), eps)
         points_out = points_out[..., :3] / denom
 
-        # When transform is (1, 4, 4) and points is (P, 3) return
-        # points_out of shape (P, 3)
-        if points_out.shape[0] == 1 and points.dim() == 2:
-            points_out = points_out.reshape(points.shape)
-
         return points_out
 
     def transform_normals(self, normals, batch_to_batch=False):
