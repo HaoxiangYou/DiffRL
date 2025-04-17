@@ -257,7 +257,7 @@ class ActionRepeatMultiEnvsWrapper(gym.Wrapper):
         # store done envs idx for reset purpose
         done_env_idxs = np.array(list(done_envs_dict.keys()), dtype=np.int32)
         done_envs[done_env_idxs] = np.int32(1)
-        return next_obss, reward_cumulative, done_envs, {}
+        return next_obss, reward_cumulative/self._num_repeats, done_envs, {}
 
     def observation_spec(self):
         return self._env.observation_spec()

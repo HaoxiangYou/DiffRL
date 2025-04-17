@@ -8,12 +8,12 @@ params:
   train:
     agent: curl_sac
     init_steps: 1000
-    num_train_steps: 1e6
+    num_train_steps: 6e7
     batch_size: 32
     hidden_dim: 1024
   
   eval:
-    eval_freq: 1000
+    eval_freq: 100000
     num_eval_episodes: 10
   
   critic:
@@ -54,7 +54,7 @@ params:
 
   general:
     image_size: 84
-    action_repeat: 1
+    action_repeat: 2
     frame_stack: 3
     replay_buffer_capacity: 100000
     dmc_render_model: half_cheetah
