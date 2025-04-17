@@ -104,8 +104,10 @@ class CartPoleDiffRenderEnv(DFlexDiffRenderEnv):
         camera_id = 1 if recording else 0
         for mujoco_joint_qs in traj:
             mujoco_joint_qs = self.get_mujoco_joint_q(mujoco_joint_qs)
-            frames.append(self.renderer.render(mujoco_joint_qs, camera_id=camera_id)[:,:,:,:3] * 255)
-        return torch.stack(frames).detach().cpu().to(torch.uint8)
+            frames.append(
+                (self.renderer.render(mujoco_joint_qs, camera_id=camera_id)[:,:,:,:3] * 255).cpu().to(torch.uint8)
+            )
+        return torch.stack(frames)
     
     def step(self, actions, enable_reset = True, enable_vis_obs = False):
         actions = actions.view((self.num_envs, self.num_actions))
