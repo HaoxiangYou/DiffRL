@@ -8,12 +8,12 @@ params:
   train:
     agent: curl_sac
     init_steps: 1000
-    num_train_steps: 1e6
+    num_train_steps: 1e7
     batch_size: 32
     hidden_dim: 1024
   
   eval:
-    eval_freq: 1000
+    eval_freq: 50000
     num_eval_episodes: 10
   
   critic:
@@ -48,7 +48,7 @@ params:
     save_tb: True
     save_buffer: False
     save_video: True
-    save_model: True
+    save_model: False
     detach_encoder: False
     log_interval: 100
 
@@ -58,7 +58,7 @@ params:
     num_actors: 16
     seed: 300
     image_size: 84
-    action_repeat: 4
+    action_repeat: 2
     frame_stack: 3
     replay_buffer_capacity: 100000
     pre_transform_image_size: 100

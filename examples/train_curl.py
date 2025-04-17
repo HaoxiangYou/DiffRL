@@ -19,14 +19,18 @@ import copy
 import yaml
 import envs
 from viewer.dmc_viewer import DMCViewer
+from utils.time_report import TimeReport
+from utils.average_meter import AverageMeter
 import externals.curl.utils as utils
 from externals.curl.logger import Logger
 from externals.curl.video import VideoRecorder
+import pickle
 
 from externals.curl.curl_sac import CurlSacAgent
 from torchvision import transforms
 import dm_env
 from gymnasium import core, spaces
+import pathlib
 
 
 class GymEnvWrapperfromdFlex(core.Env):
@@ -92,6 +96,8 @@ class GymEnvWrapperfromdFlex(core.Env):
         mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
         return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
         
+def print_info(*message):
+    print('\033[96m', *message, '\033[0m')
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -186,6 +192,20 @@ def make_agent(obs_shape, action_shape, cfg, device):
     else:
         assert 'agent is not supported: %s' % cfg["params"]["train"]["agent"]
 
+def save_training_summary(current_time_report, step_count, save_dir):
+        save_dir.mkdir(parents=True, exist_ok=True)
+        time_report = {}
+        for timer_name in current_time_report.timers.keys():
+            time_report.update({timer_name: current_time_report.timers[timer_name].time_total})
+
+        training_summary = {
+        "time_report": time_report,
+        "env_step": step_count 
+        }
+
+        with open(os.path.join(str(save_dir), "training_summary.pkl"), "wb") as f:
+            pickle.dump(training_summary, f)
+
 def main():
     args = parse_args()
     with open(args.cfg, 'r') as f:
@@ -204,6 +224,7 @@ def main():
     video_dir = utils.make_dir(os.path.join(args.log_dir, 'video'))
     model_dir = utils.make_dir(os.path.join(args.log_dir, 'model'))
     buffer_dir = utils.make_dir(os.path.join(args.log_dir, 'buffer'))
+    time_report_dir = pathlib.Path(args.log_dir).expanduser() / "time_reports"
 
     video = VideoRecorder(video_dir if cfg["params"]["misc"]["save_video"] else None)
 
@@ -214,7 +235,7 @@ def main():
         yaml.dump(cfg, f, default_flow_style=False)
 
     device = torch.device(cfg["params"]["general"]["device"] if torch.cuda.is_available() else 'cpu')
-
+    num_envs = cfg["params"]["general"]["num_actors"]
     # Exclude num_envs 
     action_shape = train_env.action_space.shape[1:]
 
@@ -243,13 +264,35 @@ def main():
 
     L = Logger(args.log_dir, use_tb=cfg["params"]["misc"]["save_tb"])
 
-    episode, episode_reward, done = 0, np.zeros(cfg["params"]["general"]["num_actors"], dtype=np.float64), np.zeros(cfg["params"]["general"]["num_actors"], dtype=np.int32)
+    global_steps, episode, episode_reward, done =0, 0, np.zeros(num_envs, dtype=np.float64), np.zeros(num_envs, dtype=np.int32)
     start_time = time.time()
+    best_policy_loss = np.inf
 
     obs = train_env.reset(force_reset = True, enable_vis_obs=True)
-    episode_step = 0
+    episode_length = torch.zeros(num_envs, dtype = int, device=device)
+    episode_loss_his = []
+    episode_length_his = []
+    episode_loss = torch.zeros(num_envs, dtype = torch.float32, device = device)
+    episode_loss_meter = AverageMeter(1, 100).to(device)
+    episode_length_meter = AverageMeter(1, 100).to(device)
+
+    time_report = TimeReport()
+    time_report.add_timer("algorithm")
+    time_report.add_timer("initialize dataset")
+    time_report.add_timer("forward simulation")
+    time_report.add_timer("backward simulation")
+    time_report.add_timer("actor training")
+    time_report.add_timer("critic training")
+    time_report.add_timer("cpc training")
+    time_report.add_timer("evaluation time")
+    time_report.add_timer("env step time")
+    time_report.add_timer("IO and Log time")
+    start_time = time.time()
+    time_report.start_timer("algorithm")
+
     for step in range(int(float(cfg["params"]["train"]["num_train_steps"]))):
         # evaluate agent periodically
+        time_report.start_timer("evaluation time")
         if step % cfg["params"]["eval"]["eval_freq"] == 0:
             L.log('eval/episode', episode, step)
             evaluate(eval_env, agent, video, cfg["params"]["eval"]["num_eval_episodes"], L, step, cfg)
@@ -257,53 +300,93 @@ def main():
                 agent.save_curl(model_dir, step)
             if cfg["params"]["misc"]["save_buffer"]:
                 replay_buffer.save(buffer_dir)
-        
-        done_env_ids = done.nonzero()[0]
-        # This means at least one of the parallel episode is done
-        if done_env_ids.size != 0:
-            if step > 0:
-                if step % cfg["params"]["misc"]["log_interval"] == 0:
-                    L.log('train/duration', time.time() - start_time, step)
-                    L.dump(step)
-                start_time = time.time()
-            if step % cfg["params"]["misc"]["log_interval"] == 0:
-                L.log('train/episode_reward', np.mean(episode_reward[done_env_ids]), step)
+            
+            save_training_summary(time_report, step, time_report_dir/f"steps_{step}")
+        time_report.end_timer("evaluation time")
 
-            obs = train_env.reset(env_ids=np.array(done_env_ids, dtype=np.int32), force_reset = False, enable_vis_obs=True)
-            done[done_env_ids] = 0
-            episode_reward[done_env_ids] = 0
-            episode += done_env_ids.size
-            if step % cfg["params"]["misc"]["log_interval"] == 0:
-                L.log('train/episode', episode, step)
+        time_start_epoch = time.time()
 
         # sample action for data collection
         if step < cfg["params"]["train"]["init_steps"]:
+            time_report.start_timer("initialize dataset")
             action = train_env.action_space.sample()
+            time_report.end_timer("initialize dataset")
         else:
+            time_report.start_timer("forward simulation")
             with utils.eval_mode(agent):
                 action = agent.sample_action(obs)
+            time_report.end_timer("forward simulation")
 
         # run training update
         if step >= cfg["params"]["train"]["init_steps"]:
-            num_updates = 1 # TODO: Maybe need more updates. Will update this later 
-            for _ in range(num_updates):
-                agent.update(replay_buffer, L, step)
+            num_updates = num_envs # TODO: Maybe need more updates. Will update this later 
+            for j in range(step, step + num_updates):
+                agent.update(replay_buffer, L, j, time_report)
 
+        time_start_steps = time.time()
+        time_report.start_timer("forward simulation")
+        time_report.start_timer("env step time")
         next_obs, reward, done, _ = train_env.step(action)
+        time_report.end_timer("env step time")
+        time_report.end_timer("forward simulation")
+        time_end_steps = time.time()
 
-        # allow infinit bootstrap
-        # done_bool = 0 if episode_step + 1 == env.spec.max_episode_steps else float(
-        #     done
-        # )
-
+        time_report.start_timer("IO and Log time")
+        reward = reward / cfg["params"]["general"]["action_repeat"]
         episode_reward += reward
-        for j in range(cfg["params"]["general"]["num_actors"]):
+        for j in range(num_envs):
             replay_buffer.add(obs[j], action[j], reward[j], next_obs[j], done[j])
 
-        obs = next_obs
-        episode_step += 1
-        print(f"Running episode {episode_step}")
+        episode_length += 1
+        global_steps += num_envs
 
+        obs = next_obs
+
+        done_env_ids = done.nonzero()[0]
+        # This means at least one of the parallel episode is done
+        with torch.no_grad():
+            episode_loss -= torch.tensor(reward, dtype=torch.float32, device=device)
+            if done_env_ids.size != 0:
+                episode_loss_meter.update(episode_loss[done_env_ids])
+                episode_length_meter.update(episode_length[done_env_ids])
+                for done_env_id in done_env_ids:
+                    if (episode_loss[done_env_id] > 1e6 or episode_loss[done_env_id] < -1e6):
+                        print('ep loss error')
+                        raise ValueError
+                    episode_loss_his.append(episode_loss[done_env_id].item())
+                    episode_length_his.append(episode_length[done_env_id].item())
+                    episode_loss[done_env_id] = 0.
+                    episode_length[done_env_id] = 0
+                train_env.reset(env_ids=np.array(done_env_ids, dtype=np.int32), force_reset = False, enable_vis_obs=True)
+                done[done_env_ids] = 0
+                episode_reward[done_env_ids] = 0
+                episode += done_env_ids.size
+        
+        # Start Logging
+        time_elapse = time.time() - start_time - time_report.timers["evaluation time"].time_total
+        if (len(episode_loss_his) > 0):
+            mean_policy_loss = episode_loss_meter.get_mean()
+            mean_episode_length = episode_length_meter.get_mean()
+            L.log_custom('rewards/step', -mean_policy_loss, global_steps)
+            L.log_custom('rewards/time', -mean_policy_loss, time_elapse)
+            L.log_custom('rewards/iter', -mean_policy_loss, step)
+            if mean_policy_loss < best_policy_loss:
+                best_policy_loss = mean_policy_loss
+                agent.save_best_curl(model_dir)
+                print_info("Best policy saved with loss: {:2f}".format(mean_policy_loss))
+        else:
+            mean_policy_loss = np.inf
+            mean_episode_length = 0
+        time_report.end_timer("IO and Log time")
+        time_end_epoch = time.time()
+        print('iter {}: ep loss {:.2f}, ep len {}, fps episode {:.2f}, fps env steps {:2f}'.format(\
+                        step, mean_policy_loss, mean_episode_length, 
+                        1 / (time_end_epoch - time_start_epoch), 
+                        cfg["params"]["general"]["action_repeat"] * num_envs / (time_end_steps - time_start_steps)))
+        
+
+    time_report.end_timer("algorithm")
+    time_report.report()
 
 if __name__ == '__main__':
     torch.multiprocessing.set_start_method('spawn')
