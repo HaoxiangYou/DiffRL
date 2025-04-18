@@ -48,19 +48,17 @@ params:
     save_tb: True
     save_buffer: False
     save_video: True
-    save_model: True
+    save_model: False
     detach_encoder: False
     log_interval: 100
 
   general:
+    device: cuda:0
+    dmc_render_model: humanoid
+    num_actors: 32
+    seed: 300
     image_size: 84
     action_repeat: 2
     frame_stack: 3
     replay_buffer_capacity: 100000
-    dmc_render_model: humanoid
-
-    player:
-      determenistic: False
-      games_num: 1
-      num_actors: 1
-      print_stats: True
+    pre_transform_image_size: 100

@@ -55,16 +55,10 @@ params:
   general:
     device: cuda:0
     dmc_render_model: hopper
-    num_actors: 16
+    num_actors: 8
     seed: 300
     image_size: 84
     action_repeat: 2
     frame_stack: 3
     replay_buffer_capacity: 100000
     pre_transform_image_size: 100
-
-    player:
-      determenistic: False
-      games_num: 1
-      num_actors: 1
-      print_stats: True
