@@ -474,9 +474,6 @@ class SHAC:
 
             with torch.no_grad():
                 self.grad_norm_before_clip = tu.grad_norm(self.actor.parameters())
-                print("actor loss:", actor_loss)
-                print("grad_norm:",  self.grad_norm_before_clip)
-                import pdb; pdb.set_trace()
                 if self.truncate_grad:
                     clip_grad_norm_(self.actor.parameters(), self.grad_norm)
                 self.grad_norm_after_clip = tu.grad_norm(self.actor.parameters()) 
