@@ -18,33 +18,36 @@ import dflex as df
 import numpy as np
 np.set_printoptions(precision=5, linewidth=256, suppress=True)
 
-try:
-    from pxr import Usd
-except ModuleNotFoundError:
-    pass
-
 from utils import load_utils as lu
 from utils import torch_utils as tu
+from viewer.maniskill_viewer import ManiskillViewer
 
 
-class CartPoleSwingUpEnv(DFlexEnv):
+class CartPoleEnv(DFlexEnv):
 
-    def __init__(self, render=False, device='cuda:0', num_envs=1024, seed=0, episode_length=240, no_grad=True, stochastic_init=False, MM_caching_frequency = 1, early_termination = False):
+    def __init__(self, device='cuda:0', num_envs=1024, seed=0, episode_length=240, img_height=84, img_width=84, no_grad=True, stochastic_init=False, MM_caching_frequency = 1, early_termination = True):
 
-        num_obs = 5
+        num_state_obs = 5
         num_act = 1
 
-        super(CartPoleSwingUpEnv, self).__init__(num_envs, num_obs, num_act, episode_length, MM_caching_frequency, seed, no_grad, render, device)
+        super(CartPoleEnv, self).__init__(num_envs, num_state_obs, num_act, episode_length, MM_caching_frequency, seed, 
+                                    no_grad=no_grad, device=device, img_height=img_height, img_width=img_width)
 
         self.stochastic_init = stochastic_init
         self.early_termination = early_termination
 
         self.init_sim()
 
+        self.renderer = ManiskillViewer(env_name="CartpoleVis", num_env=num_envs, height=img_height, width=img_width)
+
+        # boundary 
+        self.termination_pos = 2.5
+
         # action parameters
         self.action_strength = 1000.
 
         # loss related
+        self.health_offset = 10.
         self.pole_angle_penalty = 1.0
         self.pole_velocity_penalty = 0.1
 
@@ -53,28 +56,12 @@ class CartPoleSwingUpEnv(DFlexEnv):
 
         self.cart_action_penalty = 0.0
 
-        #-----------------------
-        # set up Usd recorder
-        if (self.record):
-            self.stage = Usd.Stage.CreateNew("outputs/" + "CartPoleSwingUp_" + str(self.num_envs) + ".usd")
-
-            self.recorder = df.render.UsdRenderer(self.model, self.stage)
-            self.recorder.draw_points = True
-            self.recorder.draw_springs = True
-            self.recorder.draw_shapes = True
-            self.recording_time = 0.0
-
     def init_sim(self):
         self.builder = df.sim.ModelBuilder()
 
         self.dt = 1. / 60.
         self.sim_substeps = 4
         self.sim_dt = self.dt
-
-        if self.record:
-            self.env_dist = 1.0
-        else:
-            self.env_dist = 0.0
 
         self.num_joint_q = 2
         self.num_joint_qd = 2
@@ -83,7 +70,6 @@ class CartPoleSwingUpEnv(DFlexEnv):
         for i in range(self.num_environments):
             lu.urdf_load(self.builder, 
                                 os.path.join(asset_folder, 'cartpole.urdf'),
-                                # df.transform((0.0, 2.5, 0.0 + self.env_dist * i), df.quat_from_axis_angle((1.0, 0.0, 0.0), -math.pi*0.5)), 
                                 df.transform((0.0, 2.5, 0.0), df.quat_from_axis_angle((1.0, 0.0, 0.0), -math.pi*0.5)), 
                                 floating=False,
                                 shape_kd=1e4,
@@ -100,60 +86,71 @@ class CartPoleSwingUpEnv(DFlexEnv):
         self.start_joint_q = self.state.joint_q.clone()
         self.start_joint_qd = self.state.joint_qd.clone()
 
-    def recording(self, mode = 'human'):
-        if self.record:
-            self.recording_time += self.dt
-            self.recorder.update(self.state, self.recording_time)
-            if (self.num_frames == 40):
-                try:
-                    self.stage.Save()
-                except:
-                    print('USD save error')
-                self.num_frames -= 40
+    """
+    This function render imgs for target envs
+    """
+    def render(self, env_ids):
+        mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1))
+        pixels = self.renderer.render(mujoco_joint_qs)[env_ids]
+        return pixels
+
+    """
+    This function render a given trajectory (time sequences of joint_q in shac conventions) in shape (traj_length, num_env, num_q)
+    """
+    def render_traj(self, traj, recording=False):
+        frames = []
+        for mujoco_joint_qs in traj:
+            mujoco_joint_qs = self.get_mujoco_joint_q(mujoco_joint_qs).detach()
+            frames.append(self.renderer.render(mujoco_joint_qs, recording=recording))
+        return torch.stack(frames)
     
-    def step(self, actions):
-        with df.ScopedTimer("simulate", active=False, detailed=False):
-            actions = actions.view((self.num_envs, self.num_actions))
-            
-            actions = torch.clip(actions, -1., 1.)
-            self.actions = actions
-            
-            self.state.joint_act.view(self.num_envs, -1)[:, 0:1] = actions * self.action_strength
-            
-            self.state = self.integrator.forward(self.model, self.state, self.sim_dt, self.sim_substeps, self.MM_caching_frequency)
-            self.sim_time += self.sim_dt
+    def step(self, actions, enable_reset = True, enable_vis_obs = False):
+        actions = actions.view((self.num_envs, self.num_actions))
+        
+        actions = torch.clip(actions, -1., 1.)
+
+        self.actions = actions.clone()
+        
+        self.state.joint_act.view(self.num_envs, -1)[:, 0:1] = actions * self.action_strength
+        
+        self.state = self.integrator.forward(self.model, self.state, self.sim_dt, self.sim_substeps, self.MM_caching_frequency)
+        self.sim_time += self.sim_dt
             
         self.reset_buf = torch.zeros_like(self.reset_buf)
 
         self.progress_buf += 1
-        self.num_frames += 1
 
-        self.calculateObservations()
+        self.calculateStateObservations()
         self.calculateReward()
 
-        if self.no_grad == False:
+        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
+        if enable_vis_obs:
+            if enable_reset:
+                if len(env_ids) < self.num_envs:
+                    self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+            else:
+                self.calculateVisualObservations(torch.arange(self.num_envs, dtype=torch.long, device=self.device))
+
+        if self.no_grad == False and enable_reset == True:
             self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
-                'obs_before_reset': self.state_obs_buf_before_reset,
+                'state_obs_before_reset': self.state_obs_buf_before_reset,
                 'episode_end': self.termination_buf
                 }
-
-        env_ids = self.reset_buf.nonzero(as_tuple=False).squeeze(-1)
-
-        #self.state_obs_buf_before_reset = self.state_obs_buf.clone()
-
-        with df.ScopedTimer("reset", active=False, detailed=False):
+            if enable_vis_obs:
+                self.vis_obs_buf_before_reset = self.vis_obs_buf.clone()
+                self.extras["vis_obs_before_reset"] = self.vis_obs_buf_before_reset
+        if enable_reset:
             if len(env_ids) > 0:
                 self.reset(env_ids)
-        
-        with df.ScopedTimer("render", active=False, detailed=False):
-            self.recording()
 
-        #self.extras = {'obs_before_reset': self.state_obs_buf_before_reset}
-        
-        return self.state_obs_buf, self.rew_buf, self.reset_buf, self.extras
+        obs = {"state_obs": self.state_obs_buf}
+        if enable_vis_obs:
+            obs["vis_obs"] = self.vis_obs_buf
+            
+        return obs, self.rew_buf, self.reset_buf, self.extras
     
-    def reset(self, env_ids=None, force_reset=True):
+    def reset(self, env_ids=None, force_reset=True, enable_vis_obs=False):
         if env_ids is None:
             if force_reset == True:
                 env_ids = torch.arange(self.num_envs, dtype=torch.long, device=self.device)
@@ -168,17 +165,33 @@ class CartPoleSwingUpEnv(DFlexEnv):
             if self.stochastic_init:
                 self.state.joint_q.view(self.num_envs, -1)[env_ids, :] = \
                     self.state.joint_q.view(self.num_envs, -1)[env_ids, :] \
-                    + np.pi * (torch.rand(size=(len(env_ids), self.num_joint_q), device=self.device) - 0.5)
+                    + np.pi / 6 * (torch.rand(size=(len(env_ids), self.num_joint_q), device=self.device) - 0.5)
 
                 self.state.joint_qd.view(self.num_envs, -1)[env_ids, :] = \
                     self.state.joint_qd.view(self.num_envs, -1)[env_ids, :] \
-                    + 0.5 * (torch.rand(size=(len(env_ids), self.num_joint_qd), device=self.device) - 0.5)
+                    + 0.1 * (torch.rand(size=(len(env_ids), self.num_joint_qd), device=self.device) - 0.5)
             
             self.progress_buf[env_ids] = 0
 
-            self.calculateObservations()
+            self.calculateStateObservations()
+            if enable_vis_obs:
+                pixels = self.render(env_ids)
+                # three identical images at reset
+                pixels = torch.tile(torch.moveaxis(pixels, 3, 1), (1, 3, 1, 1))
+                self.vis_obs_buf[env_ids] = pixels
+            
+        obs = {"state_obs": self.state_obs_buf}
+        if enable_vis_obs:
+            obs["vis_obs"] = self.vis_obs_buf
 
-        return self.state_obs_buf
+        return obs
+    
+    '''
+    This function returns joint_q in mujoco conventions
+    '''
+    def get_mujoco_joint_q(self, dflex_q:torch.Tensor):
+        mujoco_q = dflex_q.clone()
+        return mujoco_q
 
     '''
     cut off the gradient from the current state to previous states
@@ -197,12 +210,17 @@ class CartPoleSwingUpEnv(DFlexEnv):
     This function starts collecting a new trajectory from the current states but cut off the computation graph to the previous states.
     It has to be called every time the algorithm starts an episode and return the observation vectors
     '''
-    def initialize_trajectory(self):
+    def initialize_trajectory(self, enable_vis_obs=False):
         self.clear_grad()
-        self.calculateObservations()
-        return self.state_obs_buf
+        self.calculateStateObservations()
+        obs = {"state_obs": self.state_obs_buf}
+        # visual obs already don't have gradient
+        if enable_vis_obs:
+            obs["vis_obs"] = self.vis_obs_buf
 
-    def calculateObservations(self):
+        return obs
+
+    def calculateStateObservations(self):
         x = self.state.joint_q.view(self.num_envs, -1)[:, 0:1]
         theta = self.state.joint_q.view(self.num_envs, -1)[:, 1:2]
         xdot = self.state.joint_qd.view(self.num_envs, -1)[:, 0:1]
@@ -211,13 +229,29 @@ class CartPoleSwingUpEnv(DFlexEnv):
         # observations: [x, xdot, sin(theta), cos(theta), theta_dot]
         self.state_obs_buf = torch.cat([x, xdot, torch.sin(theta), torch.cos(theta), theta_dot], dim = -1)
 
+    """
+    This function calculate visual observations for given env_ids
+    
+    Each visual observation is a stack of three images from [t_2, t_1] to current 
+
+    The resulted vis_obs_buf is not differentiable 
+    """
+    @torch.no_grad()
+    def calculateVisualObservations(self, env_ids):
+        # shifting images forword 
+        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
+        # append new images
+        pixels = self.render(env_ids)
+        self.vis_obs_buf[env_ids, 6:, :, :] = torch.moveaxis(pixels, 3, 1)
+
     def calculateReward(self):
         x = self.state.joint_q.view(self.num_envs, -1)[:, 0]
         theta = tu.normalize_angle(self.state.joint_q.view(self.num_envs, -1)[:, 1])
         xdot = self.state.joint_qd.view(self.num_envs, -1)[:, 0]
         theta_dot = self.state.joint_qd.view(self.num_envs, -1)[:, 1]
 
-        self.rew_buf = -torch.pow(theta, 2.) * self.pole_angle_penalty \
+        self.rew_buf = self.health_offset \
+                    -torch.pow(theta, 2.) * self.pole_angle_penalty \
                     - torch.pow(theta_dot, 2.) * self.pole_velocity_penalty \
                     - torch.pow(x, 2.) * self.cart_position_penalty \
                     - torch.pow(xdot, 2.) * self.cart_velocity_penalty \
@@ -225,3 +259,9 @@ class CartPoleSwingUpEnv(DFlexEnv):
         
         # reset agents
         self.reset_buf = torch.where(self.progress_buf > self.episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
+        if self.early_termination:
+            self.reset_buf = torch.where(
+                (self.state_obs_buf[:, 0] > self.termination_pos) | (self.state_obs_buf[:, 0] < -self.termination_pos),
+                torch.ones_like(self.reset_buf),
+                self.reset_buf
+            )
