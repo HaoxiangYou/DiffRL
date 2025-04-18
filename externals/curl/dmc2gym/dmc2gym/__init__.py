@@ -1,6 +1,5 @@
-import gym
-from gym.envs.registration import register
-
+import gymnasium as gym
+from gymnasium.envs.registration import register
 
 def make(
         domain_name,
@@ -50,4 +49,4 @@ def make(
             ),
             max_episode_steps=max_episode_steps,
         )
-    return gym.make(env_id, apply_api_compatibility=True)
+    return gym.make(env_id)

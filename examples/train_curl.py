@@ -11,95 +11,132 @@ import torch
 import argparse
 import os
 import math
-import gym
 import sys
 import random
 import time
 import json
-import dmc2gym
 import copy
-
+import yaml
+import envs
+from viewer.dmc_viewer import DMCViewer
+from utils.time_report import TimeReport
+from utils.average_meter import AverageMeter
 import externals.curl.utils as utils
 from externals.curl.logger import Logger
 from externals.curl.video import VideoRecorder
+import pickle
 
 from externals.curl.curl_sac import CurlSacAgent
 from torchvision import transforms
+import dm_env
+from gymnasium import core, spaces
+import pathlib
 
+
+class GymEnvWrapperfromdFlex(core.Env):
+    def __init__(self, env, cfg):
+        self.env = env
+        self.num_envs = self.env.num_envs
+        self.num_actions = self.env.num_actions
+        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
+        self.camera_id = 0 # render camera id. 
+        self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
+        self.dmc_render_model = cfg["params"]["general"]["dmc_render_model"]
+        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
+                                            camera_id=0, height=self.render_size, width=self.render_size)
+        self.raw_rew = np.zeros((self.env.num_envs)) 
+        self.device = cfg["params"]["general"]["device"]
+
+        self._observation_space = spaces.Box(shape=self.env.num_vis_obs,
+                                                low= 0,
+                                                high= 255,
+                                                dtype='uint8')
+        # overwrite action space for parallel computation
+        self._action_space = spaces.Box(shape=(self.num_envs, self.env.num_actions),
+                                                low=-1,
+                                                high=1,
+                                                dtype='float32')
+
+        self._frame_skip = cfg["params"]["general"].get("action_repeat", 1)
+    
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        # return stacked observation (9 * width * height)
+        self.env.clear_grad()
+        obs = self.env.reset(env_ids=env_ids, 
+                             force_reset=force_reset,
+                             enable_vis_obs=enable_vis_obs)
+        reset_obs = obs["vis_obs"].detach().clone().cpu().numpy().astype("uint8")
+        return reset_obs
+
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        obs, rew_batch, done_batch, extra_info = self.env.step(actions = torch.tanh(torch.tensor(actions, dtype = torch.float32, device = self.device)), 
+                                                               enable_reset = enable_reset, 
+                                                               enable_vis_obs = enable_vis_obs)
+        del extra_info
+        self.raw_rew[:] = rew_batch.detach().clone().cpu().numpy()
+        next_vis_obs = (obs["vis_obs"]).detach().clone().cpu().numpy().astype("uint8")
+        return next_vis_obs, rew_batch.detach().clone().cpu().numpy(), done_batch.detach().clone().cpu().numpy(), {}
+    
+    @property
+    def observation_space(self):
+        return self._observation_space
+    
+    @property
+    def action_space(self):
+        return self._action_space
+    
+    @property
+    def reward_range(self):
+        return 0, self._frame_skip
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+    
+    def render(self):
+        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
+        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
+        
+def print_info(*message):
+    print('\033[96m', *message, '\033[0m')
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    # environment
-    parser.add_argument('--domain_name', default='cheetah')
-    parser.add_argument('--task_name', default='run')
-    parser.add_argument('--pre_transform_image_size', default=100, type=int)
-
-    parser.add_argument('--image_size', default=84, type=int)
-    parser.add_argument('--action_repeat', default=1, type=int)
-    parser.add_argument('--frame_stack', default=3, type=int)
-    # replay buffer
-    parser.add_argument('--replay_buffer_capacity', default=100000, type=int)
-    # train
-    parser.add_argument('--agent', default='curl_sac', type=str)
-    parser.add_argument('--init_steps', default=1000, type=int)
-    parser.add_argument('--num_train_steps', default=1000000, type=int)
-    parser.add_argument('--batch_size', default=32, type=int)
-    parser.add_argument('--hidden_dim', default=1024, type=int)
-    # eval
-    parser.add_argument('--eval_freq', default=1000, type=int)
-    parser.add_argument('--num_eval_episodes', default=10, type=int)
-    # critic
-    parser.add_argument('--critic_lr', default=1e-3, type=float)
-    parser.add_argument('--critic_beta', default=0.9, type=float)
-    parser.add_argument('--critic_tau', default=0.01, type=float) # try 0.05 or 0.1
-    parser.add_argument('--critic_target_update_freq', default=2, type=int) # try to change it to 1 and retain 0.01 above
-    # actor
-    parser.add_argument('--actor_lr', default=1e-3, type=float)
-    parser.add_argument('--actor_beta', default=0.9, type=float)
-    parser.add_argument('--actor_log_std_min', default=-10, type=float)
-    parser.add_argument('--actor_log_std_max', default=2, type=float)
-    parser.add_argument('--actor_update_freq', default=2, type=int)
-    # encoder
-    parser.add_argument('--encoder_type', default='pixel', type=str)
-    parser.add_argument('--encoder_feature_dim', default=50, type=int)
-    parser.add_argument('--encoder_lr', default=1e-3, type=float)
-    parser.add_argument('--encoder_tau', default=0.05, type=float)
-    parser.add_argument('--num_layers', default=4, type=int)
-    parser.add_argument('--num_filters', default=32, type=int)
-    parser.add_argument('--curl_latent_dim', default=128, type=int)
-    # sac
-    parser.add_argument('--discount', default=0.99, type=float)
-    parser.add_argument('--init_temperature', default=0.1, type=float)
-    parser.add_argument('--alpha_lr', default=1e-4, type=float)
-    parser.add_argument('--alpha_beta', default=0.5, type=float)
-    # misc
-    parser.add_argument('--seed', default=1, type=int)
-    parser.add_argument('--work_dir', default='.', type=str)
-    parser.add_argument('--save_tb', default=False, action='store_true')
-    parser.add_argument('--save_buffer', default=False, action='store_true')
-    parser.add_argument('--save_video', default=False, action='store_true')
-    parser.add_argument('--save_model', default=False, action='store_true')
-    parser.add_argument('--detach_encoder', default=False, action='store_true')
-
-    parser.add_argument('--log_interval', default=100, type=int)
+    parser.add_argument('--log_dir', default='./logs_curl', type=str)
+    parser.add_argument('--cfg', default='./cfg/curl/hopper.yaml', type=str)
     args = parser.parse_args()
     return args
 
+def load_env(cfg, eval=False):
+    env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
+    env =  env_fn(num_envs = 1 if eval else cfg["params"]["general"]["num_actors"], \
+                            device = cfg["params"]["general"]["device"], \
+                            img_height = cfg["params"]["general"].get("pre_transform_image_size", 100),\
+                            img_width = cfg["params"]["general"].get("pre_transform_image_size", 100),\
+                            seed = cfg["params"]["general"]["seed"], \
+                            episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
+                            stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
+                            MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
+                            no_grad = True)
+    env = GymEnvWrapperfromdFlex(env, cfg)
+    env = utils.ActionDTypeWrapperdFlex(env, dtype=np.float32)
+    env = utils.ActionRepeatMultiEnvsWrapper(env, cfg["params"]["general"].get("action_repeat", 1))
+    return env
 
-def evaluate(env, agent, video, num_episodes, L, step, args):
+def evaluate(env, agent, video, num_episodes, L, step, cfg):
     all_ep_rewards = []
     def run_eval_loop(sample_stochastically=True):
         start_time = time.time()
         prefix = 'stochastic_' if sample_stochastically else ''
         for i in range(num_episodes):
-            obs = env.reset()
+            # In paralle case, obs shape becomes (1, 9, pre_crop_img_size, pre_crop_img_size)
+            obs = env.reset(force_reset = True, enable_vis_obs=True)
             video.init(enabled=(i == 0))
             done = False
             episode_reward = 0
             while not done:
                 # center crop image
-                if args.encoder_type == 'pixel':
-                    obs = utils.center_crop_image(obs,args.image_size)
+                if cfg["params"]["encoder"]["encoder_type"] == 'pixel':
+                    obs = utils.center_crop_image(obs,cfg["params"]["general"]["image_size"])
                 with utils.eval_mode(agent):
                     if sample_stochastically:
                         action = agent.sample_action(obs)
@@ -107,7 +144,7 @@ def evaluate(env, agent, video, num_episodes, L, step, args):
                         action = agent.select_action(obs)
                 obs, reward, done, _ = env.step(action)
                 video.record(env)
-                episode_reward += reward
+                episode_reward += reward.item()
             video.save('%d.mp4' % step)
             
             L.log('eval/' + prefix + 'episode_reward', episode_reward, step)
@@ -122,171 +159,234 @@ def evaluate(env, agent, video, num_episodes, L, step, args):
     run_eval_loop(sample_stochastically=False)
     L.dump(step)
 
-
-def make_agent(obs_shape, action_shape, args, device):
-    if args.agent == 'curl_sac':
+def make_agent(obs_shape, action_shape, cfg, device):
+    if cfg["params"]["train"]["agent"] == 'curl_sac':
         return CurlSacAgent(
             obs_shape=obs_shape,
             action_shape=action_shape,
             device=device,
-            hidden_dim=args.hidden_dim,
-            discount=args.discount,
-            init_temperature=args.init_temperature,
-            alpha_lr=args.alpha_lr,
-            alpha_beta=args.alpha_beta,
-            actor_lr=args.actor_lr,
-            actor_beta=args.actor_beta,
-            actor_log_std_min=args.actor_log_std_min,
-            actor_log_std_max=args.actor_log_std_max,
-            actor_update_freq=args.actor_update_freq,
-            critic_lr=args.critic_lr,
-            critic_beta=args.critic_beta,
-            critic_tau=args.critic_tau,
-            critic_target_update_freq=args.critic_target_update_freq,
-            encoder_type=args.encoder_type,
-            encoder_feature_dim=args.encoder_feature_dim,
-            encoder_lr=args.encoder_lr,
-            encoder_tau=args.encoder_tau,
-            num_layers=args.num_layers,
-            num_filters=args.num_filters,
-            log_interval=args.log_interval,
-            detach_encoder=args.detach_encoder,
-            curl_latent_dim=args.curl_latent_dim
-
+            hidden_dim=cfg["params"]["train"]["hidden_dim"],
+            discount=cfg["params"]["sac"]["discount"],
+            init_temperature=cfg["params"]["sac"]["init_temperature"],
+            alpha_lr=float(cfg["params"]["sac"]["alpha_lr"]),
+            alpha_beta=cfg["params"]["sac"]["alpha_beta"],
+            actor_lr=float(cfg["params"]["actor"]["actor_lr"]),
+            actor_beta=cfg["params"]["actor"]["actor_beta"],
+            actor_log_std_min=cfg["params"]["actor"]["actor_log_std_min"],
+            actor_log_std_max=cfg["params"]["actor"]["actor_log_std_max"],
+            actor_update_freq=cfg["params"]["actor"]["actor_update_freq"],
+            critic_lr=float(cfg["params"]["critic"]["critic_lr"]),
+            critic_beta=cfg["params"]["critic"]["critic_beta"],
+            critic_tau=cfg["params"]["critic"]["critic_tau"],
+            critic_target_update_freq=cfg["params"]["critic"]["critic_target_update_freq"],
+            encoder_type=cfg["params"]["encoder"]["encoder_type"],
+            encoder_feature_dim=cfg["params"]["encoder"]["encoder_feature_dim"],
+            encoder_lr=float(cfg["params"]["encoder"]["encoder_lr"]),
+            encoder_tau=cfg["params"]["encoder"]["encoder_tau"],
+            num_layers=cfg["params"]["encoder"]["num_layers"],
+            num_filters=cfg["params"]["encoder"]["num_filters"],
+            log_interval=cfg["params"]["misc"]["log_interval"],
+            detach_encoder=cfg["params"]["misc"]["detach_encoder"],
+            curl_latent_dim=cfg["params"]["encoder"]["curl_latent_dim"]
         )
     else:
-        assert 'agent is not supported: %s' % args.agent
+        assert 'agent is not supported: %s' % cfg["params"]["train"]["agent"]
+
+def save_training_summary(current_time_report, step_count, save_dir):
+        save_dir.mkdir(parents=True, exist_ok=True)
+        time_report = {}
+        for timer_name in current_time_report.timers.keys():
+            time_report.update({timer_name: current_time_report.timers[timer_name].time_total})
+
+        training_summary = {
+        "time_report": time_report,
+        "env_step": step_count 
+        }
+
+        with open(os.path.join(str(save_dir), "training_summary.pkl"), "wb") as f:
+            pickle.dump(training_summary, f)
 
 def main():
     args = parse_args()
-    if args.seed == -1: 
-        args.__dict__["seed"] = np.random.randint(1,1000000)
-    utils.set_seed_everywhere(args.seed)
+    with open(args.cfg, 'r') as f:
+        cfg = yaml.load(f, Loader=yaml.SafeLoader)
 
-    env = dmc2gym.make(
-        domain_name=args.domain_name,
-        task_name=args.task_name,
-        seed=args.seed,
-        visualize_reward=False,
-        from_pixels=(args.encoder_type == 'pixel'),
-        height=args.pre_transform_image_size,
-        width=args.pre_transform_image_size,
-        frame_skip=args.action_repeat
-    )
- 
-    # env.seed(args.seed)
+    utils.set_seed_everywhere(cfg["params"]["general"]["seed"])
 
-    # stack several consecutive frames together
-    if args.encoder_type == 'pixel':
-        env = utils.FrameStack(env, k=args.frame_stack)
-    env = utils.ActionDTypeWrapper(env, dtype=np.float32)
-    
+    train_env = load_env(cfg, eval=False)
+    eval_env = load_env(cfg, eval=True)
+
     # make directory
-    ts = time.gmtime() 
-    ts = time.strftime("%m-%d", ts)    
-    env_name = args.domain_name + '-' + args.task_name
-    exp_name = env_name + '-' + ts + '-im' + str(args.image_size) +'-b'  \
-    + str(args.batch_size) + '-s' + str(args.seed)  + '-' + args.encoder_type
-    args.work_dir = args.work_dir + '/'  + exp_name
+    exp_name = utils.get_time_stamp()
+    args.log_dir = os.path.join(args.log_dir, exp_name)
 
-    utils.make_dir(args.work_dir)
-    video_dir = utils.make_dir(os.path.join(args.work_dir, 'video'))
-    model_dir = utils.make_dir(os.path.join(args.work_dir, 'model'))
-    buffer_dir = utils.make_dir(os.path.join(args.work_dir, 'buffer'))
+    utils.make_dir(args.log_dir)
+    video_dir = utils.make_dir(os.path.join(args.log_dir, 'video'))
+    model_dir = utils.make_dir(os.path.join(args.log_dir, 'model'))
+    buffer_dir = utils.make_dir(os.path.join(args.log_dir, 'buffer'))
+    time_report_dir = pathlib.Path(args.log_dir).expanduser() / "time_reports"
 
-    video = VideoRecorder(video_dir if args.save_video else None)
+    video = VideoRecorder(video_dir if cfg["params"]["misc"]["save_video"] else None)
 
-    with open(os.path.join(args.work_dir, 'args.json'), 'w') as f:
+    with open(os.path.join(args.log_dir, 'args.json'), 'w') as f:
         json.dump(vars(args), f, sort_keys=True, indent=4)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    with open(os.path.join(args.log_dir, 'config.yaml'), 'w') as f:
+        yaml.dump(cfg, f, default_flow_style=False)
 
-    action_shape = env.action_space.shape
+    device = torch.device(cfg["params"]["general"]["device"] if torch.cuda.is_available() else 'cpu')
+    num_envs = cfg["params"]["general"]["num_actors"]
+    # Exclude num_envs 
+    action_shape = train_env.action_space.shape[1:]
 
-    if args.encoder_type == 'pixel':
-        obs_shape = (3*args.frame_stack, args.image_size, args.image_size)
-        pre_aug_obs_shape = (3*args.frame_stack,args.pre_transform_image_size,args.pre_transform_image_size)
+    if cfg["params"]["encoder"]["encoder_type"] == 'pixel':
+        obs_shape = (3*cfg["params"]["general"]["frame_stack"], cfg["params"]["general"]["image_size"], cfg["params"]["general"]["image_size"])
+        pre_aug_obs_shape = (3*cfg["params"]["general"]["frame_stack"], cfg["params"]["general"]["pre_transform_image_size"], cfg["params"]["general"]["pre_transform_image_size"])
     else:
-        obs_shape = env.observation_space.shape
+        obs_shape = train_env.observation_space.shape[1:]
         pre_aug_obs_shape = obs_shape
 
     replay_buffer = utils.ReplayBuffer(
         obs_shape=pre_aug_obs_shape,
         action_shape=action_shape,
-        capacity=args.replay_buffer_capacity,
-        batch_size=args.batch_size,
+        capacity=cfg["params"]["general"]["replay_buffer_capacity"],
+        batch_size=cfg["params"]["train"]["batch_size"],
         device=device,
-        image_size=args.image_size,
+        image_size=cfg["params"]["general"]["image_size"],
     )
-
+    
     agent = make_agent(
         obs_shape=obs_shape,
         action_shape=action_shape,
-        args=args,
+        cfg=cfg,
         device=device
     )
 
-    L = Logger(args.work_dir, use_tb=args.save_tb)
+    L = Logger(args.log_dir, use_tb=cfg["params"]["misc"]["save_tb"])
 
-    episode, episode_reward, done = 0, 0, True
+    global_steps, episode, episode_reward, done =0, 0, np.zeros(num_envs, dtype=np.float64), np.zeros(num_envs, dtype=np.int32)
     start_time = time.time()
+    best_policy_loss = np.inf
 
-    for step in range(args.num_train_steps):
+    obs = train_env.reset(force_reset = True, enable_vis_obs=True)
+    episode_length = torch.zeros(num_envs, dtype = int, device=device)
+    episode_loss_his = []
+    episode_length_his = []
+    episode_loss = torch.zeros(num_envs, dtype = torch.float32, device = device)
+    episode_loss_meter = AverageMeter(1, 100).to(device)
+    episode_length_meter = AverageMeter(1, 100).to(device)
+
+    time_report = TimeReport()
+    time_report.add_timer("algorithm")
+    time_report.add_timer("initialize dataset")
+    time_report.add_timer("forward simulation")
+    time_report.add_timer("backward simulation")
+    time_report.add_timer("actor training")
+    time_report.add_timer("critic training")
+    time_report.add_timer("cpc training")
+    time_report.add_timer("evaluation time")
+    time_report.add_timer("env step time")
+    time_report.add_timer("IO and Log time")
+    start_time = time.time()
+    time_report.start_timer("algorithm")
+
+    for step in range(int(float(cfg["params"]["train"]["num_train_steps"]))):
         # evaluate agent periodically
-
-        if step % args.eval_freq == 0:
+        time_report.start_timer("evaluation time")
+        if step % cfg["params"]["eval"]["eval_freq"] == 0:
             L.log('eval/episode', episode, step)
-            evaluate(env, agent, video, args.num_eval_episodes, L, step,args)
-            if args.save_model:
+            evaluate(eval_env, agent, video, cfg["params"]["eval"]["num_eval_episodes"], L, step, cfg)
+            if cfg["params"]["misc"]["save_model"]:
                 agent.save_curl(model_dir, step)
-            if args.save_buffer:
+            if cfg["params"]["misc"]["save_buffer"]:
                 replay_buffer.save(buffer_dir)
+            
+            save_training_summary(time_report, step, time_report_dir/f"steps_{step}")
+        time_report.end_timer("evaluation time")
 
-        if done:
-            if step > 0:
-                if step % args.log_interval == 0:
-                    L.log('train/duration', time.time() - start_time, step)
-                    L.dump(step)
-                start_time = time.time()
-            if step % args.log_interval == 0:
-                L.log('train/episode_reward', episode_reward, step)
-
-            obs = env.reset()
-            done = False
-            episode_reward = 0
-            episode_step = 0
-            episode += 1
-            if step % args.log_interval == 0:
-                L.log('train/episode', episode, step)
+        time_start_epoch = time.time()
 
         # sample action for data collection
-        if step < args.init_steps:
-            action = env.action_space.sample()
+        if step < cfg["params"]["train"]["init_steps"]:
+            time_report.start_timer("initialize dataset")
+            action = train_env.action_space.sample()
+            time_report.end_timer("initialize dataset")
         else:
+            time_report.start_timer("forward simulation")
             with utils.eval_mode(agent):
                 action = agent.sample_action(obs)
+            time_report.end_timer("forward simulation")
 
         # run training update
-        if step >= args.init_steps:
-            num_updates = 1 
-            for _ in range(num_updates):
-                agent.update(replay_buffer, L, step)
+        if step >= cfg["params"]["train"]["init_steps"]:
+            num_updates = num_envs # TODO: Maybe need more updates. Will update this later 
+            for j in range(step, step + num_updates):
+                agent.update(replay_buffer, L, j, time_report)
 
-        next_obs, reward, done, _ = env.step(action)
+        time_start_steps = time.time()
+        time_report.start_timer("forward simulation")
+        time_report.start_timer("env step time")
+        next_obs, reward, done, _ = train_env.step(action)
+        time_report.end_timer("env step time")
+        time_report.end_timer("forward simulation")
+        time_end_steps = time.time()
 
-        # allow infinit bootstrap
-        # done_bool = 0 if episode_step + 1 == env._max_episode_steps else float(
-        #     done
-        # )
-        done_bool = 0 if episode_step + 1 == env.spec.max_episode_steps else float(
-            done
-        )
+        time_report.start_timer("IO and Log time")
+        reward = reward / cfg["params"]["general"]["action_repeat"]
         episode_reward += reward
-        replay_buffer.add(obs, action, reward, next_obs, done_bool)
+        for j in range(num_envs):
+            replay_buffer.add(obs[j], action[j], reward[j], next_obs[j], done[j])
+
+        episode_length += 1
+        global_steps += num_envs
 
         obs = next_obs
-        episode_step += 1
 
+        done_env_ids = done.nonzero()[0]
+        # This means at least one of the parallel episode is done
+        with torch.no_grad():
+            episode_loss -= torch.tensor(reward, dtype=torch.float32, device=device)
+            if done_env_ids.size != 0:
+                episode_loss_meter.update(episode_loss[done_env_ids])
+                episode_length_meter.update(episode_length[done_env_ids])
+                for done_env_id in done_env_ids:
+                    if (episode_loss[done_env_id] > 1e6 or episode_loss[done_env_id] < -1e6):
+                        print('ep loss error')
+                        raise ValueError
+                    episode_loss_his.append(episode_loss[done_env_id].item())
+                    episode_length_his.append(episode_length[done_env_id].item())
+                    episode_loss[done_env_id] = 0.
+                    episode_length[done_env_id] = 0
+                train_env.reset(env_ids=np.array(done_env_ids, dtype=np.int32), force_reset = False, enable_vis_obs=True)
+                done[done_env_ids] = 0
+                episode_reward[done_env_ids] = 0
+                episode += done_env_ids.size
+        
+        # Start Logging
+        time_elapse = time.time() - start_time - time_report.timers["evaluation time"].time_total
+        if (len(episode_loss_his) > 0):
+            mean_policy_loss = episode_loss_meter.get_mean()
+            mean_episode_length = episode_length_meter.get_mean()
+            L.log_custom('rewards/step', -mean_policy_loss, global_steps)
+            L.log_custom('rewards/time', -mean_policy_loss, time_elapse)
+            L.log_custom('rewards/iter', -mean_policy_loss, step)
+            if mean_policy_loss < best_policy_loss:
+                best_policy_loss = mean_policy_loss
+                agent.save_best_curl(model_dir)
+                print_info("Best policy saved with loss: {:2f}".format(mean_policy_loss))
+        else:
+            mean_policy_loss = np.inf
+            mean_episode_length = 0
+        time_report.end_timer("IO and Log time")
+        time_end_epoch = time.time()
+        print('iter {}: ep loss {:.2f}, ep len {}, fps episode {:.2f}, fps env steps {:2f}'.format(\
+                        step, mean_policy_loss, mean_episode_length, 
+                        1 / (time_end_epoch - time_start_epoch), 
+                        cfg["params"]["general"]["action_repeat"] * num_envs / (time_end_steps - time_start_steps)))
+        
+
+    time_report.end_timer("algorithm")
+    time_report.report()
 
 if __name__ == '__main__':
     torch.multiprocessing.set_start_method('spawn')

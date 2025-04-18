@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import torch.nn as nn
-import gym
+import gymnasium as gym
 import os
 from collections import deque
 import random
@@ -49,8 +49,9 @@ def module_hash(module):
 
 def make_dir(dir_path):
     try:
-        os.mkdir(dir_path)
-    except OSError:
+        os.makedirs(dir_path, exist_ok=True)
+    except OSError as e:
+        print(e)
         pass
     return dir_path
 
@@ -214,15 +215,12 @@ class FrameStack(gym.Wrapper):
 
     def reset(self):
         obs = self.env.reset()
-        import pdb; pdb.set_trace()
         for _ in range(self._k):
             self._frames.append(obs)
         return self._get_obs()
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
-        # obs, reward, terminated, truncated, info = self.env.step(action)
-        # done = terminated or truncated
         self._frames.append(obs)
         return self._get_obs(), reward, done, info
 
@@ -230,6 +228,61 @@ class FrameStack(gym.Wrapper):
         assert len(self._frames) == self._k
         return np.concatenate(list(self._frames), axis=0)
 
+class ActionRepeatMultiEnvsWrapper(gym.Wrapper):
+    def __init__(self, env, num_repeats):
+        gym.Wrapper.__init__(self, env)
+        self._env = env
+        self._num_repeats = num_repeats
+
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        reward_cumulative = np.zeros(self._env.num_envs, np.float32)
+        done_envs = np.zeros(self._env.num_envs, np.int32)
+        done_envs_dict = {} # this keep track of which envs are done so that we don't repeat them  
+        for i in range(self._num_repeats):
+            next_obss, rewards, dones, _ = self._env.step(actions = actions, 
+                                        enable_reset = enable_reset, 
+                                        enable_vis_obs = enable_vis_obs)
+            for idx, (next_obs, reward, done) in enumerate(zip(next_obss, rewards, dones)):
+                if idx in done_envs_dict.keys():
+                    # Discard the current time_step if the env has reached the end previously
+                    next_obss[idx] = done_envs_dict[idx]
+                elif done:
+                    # if the env is done, we will add the time_step to the done_envs
+                    done_envs_dict[idx] = next_obs
+                    reward_cumulative[idx] += reward 
+                else:
+                    # if the envs is not done, we will add the reward and discount
+                    reward_cumulative[idx] += reward 
+
+        # store done envs idx for reset purpose
+        done_env_idxs = np.array(list(done_envs_dict.keys()), dtype=np.int32)
+        done_envs[done_env_idxs] = np.int32(1)
+        return next_obss, reward_cumulative/self._num_repeats, done_envs, {}
+
+    def observation_spec(self):
+        return self._env.observation_spec()
+
+    def action_spec(self):
+        return self._env.action_spec()
+
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        return self._env.reset(env_ids=env_ids, 
+                                force_reset=force_reset,
+                                enable_vis_obs=enable_vis_obs)
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+from datetime import datetime
+def get_time_stamp():
+    now = datetime.now()
+    year = now.strftime('%Y')
+    month = now.strftime('%m')
+    day = now.strftime('%d')
+    hour = now.strftime('%H')
+    minute = now.strftime('%M')
+    second = now.strftime('%S')
+    return '{}-{}-{}-{}-{}-{}'.format(month, day, year, hour, minute, second)
 
 def random_crop(imgs, output_size):
     """
@@ -254,13 +307,26 @@ def random_crop(imgs, output_size):
     return cropped_imgs
 
 def center_crop_image(image, output_size):
-    h, w = image.shape[1:]
-    new_h, new_w = output_size, output_size
+    if len(image.shape) == 3:
+        h, w = image.shape[1:]
+        new_h, new_w = output_size, output_size
 
-    top = (h - new_h)//2
-    left = (w - new_w)//2
+        top = (h - new_h)//2
+        left = (w - new_w)//2
 
-    image = image[:, top:top + new_h, left:left + new_w]
+        image = image[:, top:top + new_h, left:left + new_w]
+        
+    elif len(image.shape) == 4:
+        h, w = image.shape[2:]
+        new_h, new_w = output_size, output_size
+
+        top = (h - new_h)//2
+        left = (w - new_w)//2
+
+        image = image[:, :, top:top + new_h, left:left + new_w]
+    else:
+        raise Exception("The shape of the image must be 3 or 4")
+
     return image
 
 
@@ -277,3 +343,17 @@ class ActionDTypeWrapper(gym.Wrapper):
 
     def reset(self):
         return self._env.reset()
+
+class ActionDTypeWrapperdFlex(gym.Wrapper):
+    def __init__(self, env, dtype):
+        gym.Wrapper.__init__(self, env)
+        self._env = env
+        self._dtype = dtype
+
+    def step(self, actions, enable_reset = False, enable_vis_obs = True):
+        actions = actions.astype(self._dtype)
+        return self._env.step(actions = actions, enable_reset = False, enable_vis_obs = True)
+
+    def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
+        return self._env.reset(env_ids = None, force_reset = True, enable_vis_obs=True)
+

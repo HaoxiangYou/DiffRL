@@ -26,9 +26,7 @@ class VideoRecorder(object):
                     camera_id=self.camera_id
                 )
             except:
-                frame = env.render(
-                    mode='rgb_array',
-                )
+                frame = env.render()
     
             self.frames.append(frame)
 
