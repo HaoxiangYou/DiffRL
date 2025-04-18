@@ -116,7 +116,8 @@ class DeepMindControlDflex:
         obs["is_first"] = time_step.first()
         done = time_step.last()
         info = {"discount": np.array(time_step.discount, np.float32)}
-        return obs, reward, done, info
+        # Normalize Reward to compare with other baselines
+        return obs, reward / self._action_repeat, done, info
 
     def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
         time_step = self._env.reset(env_ids=env_ids, 

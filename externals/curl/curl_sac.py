@@ -344,11 +344,11 @@ class CurlSacAgent(object):
     def select_action(self, obs):
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
-            obs = obs.unsqueeze(0)
+            # obs = obs.unsqueeze(0)
             mu, _, _, _ = self.actor(
                 obs, compute_pi=False, compute_log_pi=False
             )
-            return mu.cpu().data.numpy().flatten()
+            return mu.cpu().data.numpy() #.flatten()
 
     def sample_action(self, obs):
         if obs.shape[-1] != self.image_size:
@@ -356,9 +356,9 @@ class CurlSacAgent(object):
  
         with torch.no_grad():
             obs = torch.FloatTensor(obs).to(self.device)
-            obs = obs.unsqueeze(0)
+            # obs = obs.unsqueeze(0)
             mu, pi, _, _ = self.actor(obs, compute_log_pi=False)
-            return pi.cpu().data.numpy().flatten()
+            return pi.cpu().data.numpy() #.flatten()
 
     def update_critic(self, obs, action, reward, next_obs, not_done, L, step):
         with torch.no_grad():
@@ -435,7 +435,8 @@ class CurlSacAgent(object):
             L.log('train/curl_loss', loss, step)
 
 
-    def update(self, replay_buffer, L, step):
+    def update(self, replay_buffer, L, step, time_report):
+        time_report.start_timer("IO and Log time")
         if self.encoder_type == 'pixel':
             obs, action, reward, next_obs, not_done, cpc_kwargs = replay_buffer.sample_cpc()
         else:
@@ -443,12 +444,19 @@ class CurlSacAgent(object):
     
         if step % self.log_interval == 0:
             L.log('train/batch_reward', reward.mean(), step)
+        time_report.end_timer("IO and Log time")
 
+        time_report.start_timer("backward simulation")
+        time_report.start_timer("critic training")
         self.update_critic(obs, action, reward, next_obs, not_done, L, step)
-
+        time_report.end_timer("critic training")
+        
+        time_report.start_timer("actor training")
         if step % self.actor_update_freq == 0:
             self.update_actor_and_alpha(obs, L, step)
+        time_report.end_timer("actor training")
 
+        time_report.start_timer("critic training")
         if step % self.critic_target_update_freq == 0:
             utils.soft_update_params(
                 self.critic.Q1, self.critic_target.Q1, self.critic_tau
@@ -460,10 +468,13 @@ class CurlSacAgent(object):
                 self.critic.encoder, self.critic_target.encoder,
                 self.encoder_tau
             )
-        
+        time_report.end_timer("critic training")
+        time_report.start_timer("cpc training")
         if step % self.cpc_update_freq == 0 and self.encoder_type == 'pixel':
             obs_anchor, obs_pos = cpc_kwargs["obs_anchor"], cpc_kwargs["obs_pos"]
             self.update_cpc(obs_anchor, obs_pos,cpc_kwargs, L, step)
+        time_report.end_timer("cpc training")
+        time_report.end_timer("backward simulation")
 
     def save(self, model_dir, step):
         torch.save(
@@ -476,6 +487,11 @@ class CurlSacAgent(object):
     def save_curl(self, model_dir, step):
         torch.save(
             self.CURL.state_dict(), '%s/curl_%s.pt' % (model_dir, step)
+        )
+    
+    def save_best_curl(self, model_dir):
+        torch.save(
+            self.CURL.state_dict(), '%s/best_policy.pt' % (model_dir)
         )
 
     def load(self, model_dir, step):

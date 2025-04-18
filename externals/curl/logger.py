@@ -86,7 +86,7 @@ class MetersGroup(object):
         data = self._prime_meters()
         data['step'] = step
         self._dump_to_file(data)
-        self._dump_to_console(data, prefix)
+        # self._dump_to_console(data, prefix)
         self._meters.clear()
 
 
@@ -145,6 +145,9 @@ class Logger(object):
             self.log_histogram(key + '_b', param.bias.data, step)
             if hasattr(param.bias, 'grad') and param.bias.grad is not None:
                 self.log_histogram(key + '_b_g', param.bias.grad.data, step)
+
+    def log_custom(self, key, value, step):
+        self._try_sw_log(key, value, step)
 
     def log_image(self, key, image, step):
         assert key.startswith('train') or key.startswith('eval')

@@ -335,22 +335,6 @@ def make_env(config, mode, id):
         env = wrappers.RewardObs(env)
     return env
 
-def save_training_summary(in_time_report, optinal_value=None ,save_dir = None):
-        if save_dir is None:
-            raise ValueError("save_dir is None")
-        
-        time_report = {}
-        for timer_name in in_time_report.timers.keys():
-            time_report.update({timer_name: in_time_report.timers[timer_name].time_total})
-
-        training_summary = {
-        "time_report": time_report,
-        "env_step": optinal_value["env_step"], 
-        }
-
-        with open(os.path.join(save_dir, "training_summary.pkl"), "wb") as f:
-            pickle.dump(training_summary, f)
-
 def main(config):
     time_report = TimeReport()
     time_report.add_timer("algorithm")
@@ -512,6 +496,7 @@ def main(config):
         }
         torch.save(items_to_save, logdir / "latest.pt")
         time_report.end_timer("IO time")
+        save_training_summary(time_report, agent._step, time_report_dir/f"steps_{agent._step}")
     time_report.end_timer("algorithm")
     time_report.report()
     save_training_summary(time_report, agent._step, time_report_dir/f"steps_{agent._step}")
