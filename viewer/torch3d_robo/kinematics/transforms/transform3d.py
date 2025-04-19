@@ -378,11 +378,6 @@ class Transform3d:
         #     self._lu = self._matrix[:, :3, :3].transpose(1, 2).lu()
         # normals_out = normals.lu_solve(*self._lu)
 
-        # When transform is (1, 4, 4) and normals is (P, 3) return
-        # normals_out of shape (P, 3)
-        if normals_out.shape[0] == 1 and normals.dim() == 2:
-            normals_out = normals_out.reshape(normals.shape)
-
         return normals_out
 
     def transform_shape_operator(self, shape_operators):
