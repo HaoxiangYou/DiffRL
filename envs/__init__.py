@@ -8,6 +8,7 @@ from envs.cartpole import CartPoleEnv
 from envs.humanoid import HumanoidEnv
 try:
     from envs.cartpole_diff_render_env import CartPoleDiffRenderEnv
+    from envs.ant_diff_render_env import AntDiffRenderEnv
     from envs.dflex_diff_render_env import DFlexDiffRenderEnv
 except ImportError:
     warnings.warn("Failed to load Diff Render Env. Continuing without it.", category=ImportWarning)
