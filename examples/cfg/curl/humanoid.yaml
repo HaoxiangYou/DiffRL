@@ -55,8 +55,8 @@ params:
   general:
     device: cuda:0
     dmc_render_model: humanoid
-    num_actors: 32
-    seed: 300
+    num_actors: 16
+    seed: 1000
     image_size: 84
     action_repeat: 2
     frame_stack: 3
