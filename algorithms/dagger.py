@@ -182,11 +182,11 @@ class Dagger:
 
         # add timer
         self.time_report.add_timer("algorithm")
-        self.time_report.add_timer("trajectory rollouts")
         self.time_report.add_timer("foward simulation")
         self.time_report.add_timer("expert correction")
         self.time_report.add_timer("evaluation")
         self.time_report.add_timer("supervised learning")
+        self.time_report.add_timer("IO time")
 
         self.time_report.start_timer("algorithm")
         
@@ -200,10 +200,10 @@ class Dagger:
             time_start_epoch = time.time()
 
             # sample trajectory
-            self.time_report.start_timer("trajectory rollouts")
+            self.time_report.start_timer("forward simulation")
             trajs = self.sample_trajectories()
             trajs = self.reshape_trajs(trajs)
-            self.time_report.end_timer("trajectory rollouts")
+            self.time_report.end_timer("forward simulation")
 
             # provide expert action
             self.time_report.start_timer("expert correction")
@@ -211,7 +211,9 @@ class Dagger:
                 trajs["actions"] = self.teacher_policy(trajs["state_obs"])
             self.time_report.end_timer("expert correction")
 
+            self.time_report.start_timer("IO time")
             self.replay_buffer.append(trajs)
+            self.time_report.end_timer("IO time")
 
             # apply supervised learning
             if len(self.replay_buffer) < self.learning_starts:
