@@ -115,10 +115,10 @@ dflex_vision:
   img_width: 64
   seed: 800
   stochastic_env: True
-  episode_length: 1000
+  episode_length: 240 # 1000
   MM_caching_frequency: 16
-  dmc_render_model: {humanoid: 'humanoid', hopper: 'hopper', cheetah: 'half_cheetah', ant: 'ant'}
-  env_name: {humanoid: 'HumanoidEnv', hopper: 'HopperEnv', cheetah: 'CheetahEnv', ant: 'AntEnv'}
+  dmc_render_model: {humanoid: 'humanoid', hopper: 'hopper', cheetah: 'half_cheetah', ant: 'ant', cartpole: 'cartpole'}
+  env_name: {humanoid: 'HumanoidEnv', hopper: 'HopperEnv', cheetah: 'CheetahEnv', ant: 'AntEnv', cartpole: 'CartPoleEnv' }
 
 dmc_vision:
   steps: 1e6

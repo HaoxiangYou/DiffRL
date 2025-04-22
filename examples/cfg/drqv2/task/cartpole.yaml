@@ -1,10 +1,13 @@
+num_train_frames: 30100000
+stddev_schedule: 'linear(1.0,0.1,500000)'
+
 params:  
   diff_env:
     name: CartPoleEnv
     stochastic_env: True
     episode_length: 240
     MM_caching_frequency: 4
-  
+
   network:
     actor: ActorStochasticMLP
     actor_mlp:
@@ -15,9 +18,16 @@ params:
     critic_mlp:
       units: [64, 64]
       activation: elu
-
+  
+  general:
+    device: cuda:0
+    render: False 
+    seed: 300
+    train: True
+    
   config:
-    name: df_cartpole_dva
+    name: df_ant_drqv2
+    dmc_render_model: ant
     actor_learning_rate: 2e-3 # adam
     critic_learning_rate: 2e-4 # adam
     lr_schedule: linear # ['constant', 'linear']
@@ -25,24 +35,17 @@ params:
     state_obs_rms: True
     ret_rms: False
     critic_iterations: 16
-    critic_method: td-lambda 
+    critic_method: td-lambda # ['td-lambda', 'one-step']
     lambda: 0.95
     num_batch: 4
     gamma: 0.99
     betas: [0.7, 0.95] # adam
-    max_epochs: 2000
-    steps_num: 32
-    grad_norm: 1.0 
-    truncate_grads: True
-    num_actors: 64 
+    truncate_grads: True 
+    num_actors: 16
     # visual observation related
-    vis_obs: False
+    vis_obs: True
     img_height: 84
     img_width: 84
-    save_interval: 100
-
-    player:
-      determenistic: True
-      games_num: 4
-      num_actors: 4
-      print_stats: True
+    img_aug: False
+    img_aug_padding: 4
+    save_interval: 400

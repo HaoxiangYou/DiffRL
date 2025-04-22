@@ -64,9 +64,9 @@ class MakeDMfromdFlex(dm_env.Environment):
         self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
         self.camera_id = 0 # render camera id. 
         self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
-        self.dmc_render_model = cfg.dmc_render_model[task]
-        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
-                                            camera_id=0, height=self.render_size, width=self.render_size)
+        # self.dmc_render_model = cfg.dmc_render_model[task]
+        # self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
+        #                                     camera_id=0, height=self.render_size, width=self.render_size)
         self.device = cfg.device
         self.raw_rew = np.zeros((self.env.num_envs)) 
         if hasattr(self.env, 'observation_spec'):
@@ -129,9 +129,9 @@ class MakeDMfromdFlex(dm_env.Environment):
     def discount_spec(self):
         return self._discount_spec
     
-    def render(self):
-        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
-        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
+    # def render(self):
+    #     mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
+    #     return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
 
 class Dreamer(nn.Module):
     def __init__(self, obs_space, act_space, config, logger, dataset):

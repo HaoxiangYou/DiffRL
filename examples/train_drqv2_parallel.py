@@ -146,6 +146,7 @@ class Workspace:
         self.num_envs = cfg["params"]["config"]["num_actors"]
         self.img_height = cfg["params"]["config"].get("img_height", 84)
         self.img_width = cfg["params"]["config"].get("img_width", 84)
+        self.if_render = cfg["params"]["general"]["render"]
         utils.set_seed_everywhere(cfg.seed)
         self.device = torch.device(cfg.device)
         self.setup()
@@ -200,10 +201,13 @@ class Workspace:
             self.cfg.save_snapshot, self.cfg.nstep, self.cfg.discount)
         self._replay_iter = None
 
-        self.video_recorder = VideoRecorder(
-            self.work_dir if self.cfg.save_video else None)
-        self.train_video_recorder = TrainVideoRecorder(
-            self.work_dir if self.cfg.save_train_video else None)
+        self.video_recorder = None 
+        self.train_video_recorder = None
+        if self.if_render:
+            self.video_recorder = VideoRecorder(
+                self.work_dir if self.cfg.save_video else None)
+            self.train_video_recorder = TrainVideoRecorder(
+                self.work_dir if self.cfg.save_train_video else None)
 
     @property
     def global_step(self):
@@ -231,7 +235,8 @@ class Workspace:
 
         while eval_until_episode(episode):
             time_step = self.eval_env.reset(env_ids = None, force_reset = True)
-            self.video_recorder.init(self.eval_env, enabled=(episode == 0))
+            if self.video_recorder is not None:
+                self.video_recorder.init(self.eval_env, enabled=(episode == 0))
             while not time_step[0].last():
                 with torch.no_grad(), utils.eval_mode(self.agent):
                     actions = self.agent.act(time_step[0].observation,
@@ -240,13 +245,15 @@ class Workspace:
                 time_step = self.eval_env.step(actions=actions, 
                                                 enable_reset = False, 
                                                 enable_vis_obs = True)
-                self.video_recorder.record(self.eval_env)
+                if self.video_recorder is not None:                                
+                    self.video_recorder.record(self.eval_env)
                 total_reward += time_step[0].reward
                 step += 1
             episode += 1
             if time_step[0].last():
                 self.eval_env.reset(force_reset = True, enable_vis_obs=True)
-            self.video_recorder.save(file_name= f"{file_name}/eval_video.mp4")
+            if self.video_recorder is not None:
+                self.video_recorder.save(file_name= f"{file_name}/eval_video.mp4")
         return total_reward / episode
 
     def process_time_steps(self, store_time_steps):
