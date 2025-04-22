@@ -360,7 +360,7 @@ class DVA:
                 self.grad_norm_after_clip = tu.grad_norm(self.actor.parameters()) 
                 
                 # sanity check
-                if torch.isnan(self.grad_norm_before_clip) or self.grad_norm_before_clip > 1000000.:
+                if torch.isnan(self.grad_norm_before_clip) or self.grad_norm_before_clip > 1e8:
                     print('NaN gradient')
                     raise ValueError
 

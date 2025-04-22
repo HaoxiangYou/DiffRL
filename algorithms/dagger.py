@@ -105,7 +105,12 @@ class Dagger:
         if self.enable_vis_obs:   
             self.vis_obs_buf = torch.zeros((self.steps_num, self.num_envs) + self.num_vis_obs, dtype=torch.uint8, device = self.device)
         self.max_replay_buffer_size = cfg["params"]["config"]["max_replay_buffer_size"]
-        self.replay_buffer = ExpertReplayBuffer(max_size=self.max_replay_buffer_size)
+        if self.enable_vis_obs:
+            self.replay_buffer = ExpertReplayBuffer(state_obs_shape=self.num_state_obs, action_shape=self.num_actions, 
+                                                    vis_obs_shape=self.num_vis_obs, max_size=self.max_replay_buffer_size)
+        else:
+            self.replay_buffer = ExpertReplayBuffer(state_obs_shape=self.num_state_obs, 
+                                                    action_shape=self.num_actions, max_size=self.max_replay_buffer_size)
     
         # average meter
         self.episode_rewards_meter = AverageMeter(1, 100).to(self.device)
@@ -182,11 +187,11 @@ class Dagger:
 
         # add timer
         self.time_report.add_timer("algorithm")
-        self.time_report.add_timer("trajectory rollouts")
-        self.time_report.add_timer("foward simulation")
+        self.time_report.add_timer("forward simulation")
         self.time_report.add_timer("expert correction")
         self.time_report.add_timer("evaluation")
         self.time_report.add_timer("supervised learning")
+        self.time_report.add_timer("IO time")
 
         self.time_report.start_timer("algorithm")
         
@@ -200,10 +205,10 @@ class Dagger:
             time_start_epoch = time.time()
 
             # sample trajectory
-            self.time_report.start_timer("trajectory rollouts")
+            self.time_report.start_timer("forward simulation")
             trajs = self.sample_trajectories()
             trajs = self.reshape_trajs(trajs)
-            self.time_report.end_timer("trajectory rollouts")
+            self.time_report.end_timer("forward simulation")
 
             # provide expert action
             self.time_report.start_timer("expert correction")
@@ -211,7 +216,9 @@ class Dagger:
                 trajs["actions"] = self.teacher_policy(trajs["state_obs"])
             self.time_report.end_timer("expert correction")
 
+            self.time_report.start_timer("IO time")
             self.replay_buffer.append(trajs)
+            self.time_report.end_timer("IO time")
 
             # apply supervised learning
             if len(self.replay_buffer) < self.learning_starts:

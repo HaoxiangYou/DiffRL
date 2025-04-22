@@ -37,20 +37,34 @@ from viewer.video_recorder import VideoRecorder
 class SHAC:
     def __init__(self, cfg):
         env_fn = getattr(envs, cfg["params"]["diff_env"]["name"])
-
         seeding(cfg["params"]["general"]["seed"])
-        self.env = env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
-                            device = cfg["params"]["general"]["device"], \
-                            seed = cfg["params"]["general"]["seed"], \
-                            episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
-                            stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
-                            MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
-                            no_grad = False)
+        self.enable_vis_obs = cfg["params"]["config"].get("vis_obs", False)
+        if self.enable_vis_obs:
+            if not issubclass(env_fn, envs.DFlexDiffRenderEnv):
+                raise ValueError("visual-SHAC requires diff rendering")
+            else:
+                self.env = env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
+                                    device = cfg["params"]["general"]["device"], \
+                                    seed = cfg["params"]["general"]["seed"], \
+                                    episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
+                                    stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
+                                    MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
+                                    no_grad = False,
+                                    no_vis_grad = not self.enable_vis_obs)
+        else:
+            self.env = env_fn(num_envs = cfg["params"]["config"]["num_actors"], \
+                                    device = cfg["params"]["general"]["device"], \
+                                    seed = cfg["params"]["general"]["seed"], \
+                                    episode_length=cfg["params"]["diff_env"].get("episode_length", 250), \
+                                    stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
+                                    MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
+                                    no_grad = False)
 
         print('num_envs = ', self.env.num_envs)
         print('num_actions = ', self.env.num_actions)
         print('num_state_obs = ', self.env.num_state_obs)
-        print('num_vis_obs =', self.env.num_vis_obs)
+        if self.enable_vis_obs:
+            print('num_vis_obs =', self.env.num_vis_obs)
 
         self.num_envs = self.env.num_envs
         self.num_state_obs = self.env.num_state_obs
@@ -186,8 +200,11 @@ class SHAC:
                 ret_var = self.ret_rms.var.clone()
 
         # initialize trajectory to cut off gradients between episodes.
-        obs = self.env.initialize_trajectory()
+        obs = self.env.initialize_trajectory(enable_vis_obs=self.enable_vis_obs)
         state_obs = obs["state_obs"]
+        if self.enable_vis_obs:
+            vis_obs = obs["vis_obs"]
+
         if self.state_obs_rms is not None:
             # update state obs rms
             with torch.no_grad():
@@ -199,10 +216,15 @@ class SHAC:
             with torch.no_grad():
                 self.state_obs_buf[i] = state_obs.clone()
 
-            actions = self.actor(state_obs, deterministic = deterministic)
+            if self.enable_vis_obs:
+                actions = self.actor(vis_obs, deterministic = deterministic)
+            else:
+                actions = self.actor(state_obs, deterministic = deterministic)
 
-            obs, rew, done, extra_info = self.env.step(torch.tanh(actions))
+            obs, rew, done, extra_info = self.env.step(torch.tanh(actions), enable_vis_obs=self.enable_vis_obs, enable_reset=True)
             state_obs = obs["state_obs"]
+            if self.enable_vis_obs:
+                vis_obs = obs["vis_obs"]
             
             with torch.no_grad():
                 raw_rew = rew.clone()
@@ -320,8 +342,10 @@ class SHAC:
         episode_discounted_loss = torch.zeros(self.num_envs, dtype = torch.float32, device = self.device)
 
         env = self.env.clone()
-        obs = env.reset()
+        obs = env.reset(enable_vis_obs=self.enable_vis_obs)
         state_obs = obs["state_obs"]
+        if self.enable_vis_obs:
+            vis_obs = obs["vis_obs"]
 
         joint_qs.append(env.state.joint_q.view(self.num_envs, -1).detach().clone())
         joint_qds.append(env.state.joint_qd.view(self.num_envs, -1).detach().clone())
@@ -334,10 +358,15 @@ class SHAC:
             if self.state_obs_rms is not None:
                 state_obs = self.state_obs_rms.normalize(state_obs)
 
-            actions = self.actor(state_obs, deterministic = deterministic)
+            if self.enable_vis_obs:
+                actions = self.actor(vis_obs, deterministic = deterministic)
+            else:
+                actions = self.actor(state_obs, deterministic = deterministic)
 
-            obs, rew, done, _ = env.step(torch.tanh(actions))
+            obs, rew, done, _ = env.step(torch.tanh(actions), enable_reset=True, enable_vis_obs=self.enable_vis_obs)
             state_obs = obs["state_obs"]
+            if self.enable_vis_obs:
+                vis_obs = obs["vis_obs"]
 
             joint_qs.append(env.state.joint_q.view(self.num_envs, -1).detach().clone())
             joint_qds.append(env.state.joint_qd.view(self.num_envs, -1).detach().clone())
@@ -394,7 +423,7 @@ class SHAC:
 
     def initialize_env(self):
         self.env.clear_grad()
-        self.env.reset()
+        self.env.reset(enable_vis_obs=self.enable_vis_obs)
 
     @torch.no_grad()
     def run(self, num_games, save_dir=None, maximum_eval_length=None):
@@ -450,7 +479,7 @@ class SHAC:
                 self.grad_norm_after_clip = tu.grad_norm(self.actor.parameters()) 
                 
                 # sanity check
-                if torch.isnan(self.grad_norm_before_clip) or self.grad_norm_before_clip > 1000000.:
+                if torch.isnan(self.grad_norm_before_clip):
                     print('NaN gradient')
                     raise ValueError
 

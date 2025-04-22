@@ -1,1 +1,2 @@
 from viewer.torch3d_robo.robot_renderer.cartpole_renderer import CartpoleRenderer
+from viewer.torch3d_robo.robot_renderer.ant_renderer import AntRenderer

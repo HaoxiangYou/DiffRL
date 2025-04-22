@@ -1,10 +1,3 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
 from envs.dflex_diff_render_env import DFlexDiffRenderEnv
 import math
 import torch
@@ -104,8 +97,10 @@ class CartPoleDiffRenderEnv(DFlexDiffRenderEnv):
         camera_id = 1 if recording else 0
         for mujoco_joint_qs in traj:
             mujoco_joint_qs = self.get_mujoco_joint_q(mujoco_joint_qs)
-            frames.append(self.renderer.render(mujoco_joint_qs, camera_id=camera_id)[:,:,:,:3] * 255)
-        return torch.stack(frames).detach().cpu().to(torch.uint8)
+            frames.append(
+                (self.renderer.render(mujoco_joint_qs, camera_id=camera_id)[:,:,:,:3] * 255).cpu().to(torch.uint8)
+            )
+        return torch.stack(frames)
     
     def step(self, actions, enable_reset = True, enable_vis_obs = False):
         actions = actions.view((self.num_envs, self.num_actions))
@@ -153,7 +148,7 @@ class CartPoleDiffRenderEnv(DFlexDiffRenderEnv):
                 self.extras["vis_obs_before_reset"] = self.vis_obs_buf_before_reset
         if enable_reset:
             if len(env_ids) > 0:
-                self.reset(env_ids)
+                self.reset(env_ids=env_ids, enable_vis_obs=enable_vis_obs)
 
         obs = {"state_obs": self.state_obs_buf}
         if enable_vis_obs:
