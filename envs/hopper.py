@@ -178,7 +178,7 @@ class HopperEnv(DFlexEnv):
                 self.extras["vis_obs_before_reset"] = self.vis_obs_buf_before_reset
         if enable_reset:
             if len(env_ids) > 0:
-                self.reset(env_ids)
+                self.reset(env_ids, enable_vis_obs=True)
 
         obs = {"state_obs": self.state_obs_buf}
         if enable_vis_obs:

@@ -228,7 +228,7 @@ class HumanoidEnv(DFlexEnv):
         
         if enable_reset:
             if len(env_ids) > 0:
-                self.reset(env_ids)
+                self.reset(env_ids, enable_vis_obs=True)
 
         obs = {"state_obs": self.state_obs_buf}
         if enable_vis_obs:
