@@ -64,23 +64,19 @@ class ActorSupervisedDataset:
     
 
 class ExpertReplayBuffer(object):    
-    def __init__(self, max_size=1000000):
+    def __init__(self, state_obs_shape, action_shape, vis_obs_shape=None, max_size=1000000):
 
         self.max_size = max_size
 
-        # store each rollout
-        self.paths = []
-
-        # store (concatenated) component arrays from each rollout
-        self.vis_obs = None
-        self.state_obs = None
-        self.actions = None
+        self.state_obs = np.zeros((max_size, state_obs_shape), dtype=np.float32)
+        self.actions = np.zeros((max_size, action_shape), dtype=np.float32)
+        if vis_obs_shape is not None:
+            self.vis_obs = np.zeros((max_size, *vis_obs_shape), dtype=np.uint8)
+        self.size = 0
+        self.pos = 0
 
     def __len__(self):
-        if self.state_obs is not None:
-            return self.state_obs.shape[0]
-        else:
-            return 0
+        return self.size
         
     def append(self, control_action_pairs):
 
@@ -90,13 +86,12 @@ class ExpertReplayBuffer(object):
         if "vis_obs" in control_action_pairs:
             vis_obs = control_action_pairs["vis_obs"].cpu().numpy()
 
-        if self.state_obs is None:
-            self.state_obs = state_obs[-self.max_size:]
-            self.actions = actions[-self.max_size:]
-            if vis_obs is not None:
-                self.vis_obs = vis_obs[-self.max_size:]
-        else:
-            self.state_obs = np.concatenate([self.state_obs, state_obs])[-self.max_size:]
-            self.actions = np.concatenate([self.actions, actions])[-self.max_size:]
-            if vis_obs is not None:
-                self.vis_obs = np.concatenate([self.vis_obs, vis_obs])[-self.max_size:]
+        batch_size = state_obs.shape[0]
+        if self.pos + batch_size > self.max_size:
+            batch_size = self.max_size - self.pos 
+        self.state_obs[self.pos:self.pos+batch_size] = state_obs[:batch_size]
+        self.actions[self.pos:self.pos+batch_size] = actions[:batch_size]
+        if vis_obs is not None:
+            self.vis_obs[self.pos:self.pos+batch_size] = vis_obs[:batch_size]
+        self.size = min(self.size + batch_size, self.max_size)
+        self.pos = (self.pos + batch_size) % self.max_size

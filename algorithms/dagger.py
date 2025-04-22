@@ -105,7 +105,12 @@ class Dagger:
         if self.enable_vis_obs:   
             self.vis_obs_buf = torch.zeros((self.steps_num, self.num_envs) + self.num_vis_obs, dtype=torch.uint8, device = self.device)
         self.max_replay_buffer_size = cfg["params"]["config"]["max_replay_buffer_size"]
-        self.replay_buffer = ExpertReplayBuffer(max_size=self.max_replay_buffer_size)
+        if self.enable_vis_obs:
+            self.replay_buffer = ExpertReplayBuffer(state_obs_shape=self.num_state_obs, action_shape=self.num_actions, 
+                                                    vis_obs_shape=self.num_vis_obs, max_size=self.max_replay_buffer_size)
+        else:
+            self.replay_buffer = ExpertReplayBuffer(state_obs_shape=self.num_state_obs, 
+                                                    action_shape=self.num_actions, max_size=self.max_replay_buffer_size)
     
         # average meter
         self.episode_rewards_meter = AverageMeter(1, 100).to(self.device)
@@ -182,7 +187,7 @@ class Dagger:
 
         # add timer
         self.time_report.add_timer("algorithm")
-        self.time_report.add_timer("foward simulation")
+        self.time_report.add_timer("forward simulation")
         self.time_report.add_timer("expert correction")
         self.time_report.add_timer("evaluation")
         self.time_report.add_timer("supervised learning")
