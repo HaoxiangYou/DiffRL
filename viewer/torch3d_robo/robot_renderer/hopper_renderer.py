@@ -9,29 +9,30 @@ from pytorch3d.renderer import (
     SoftPhongShader, PointLights, look_at_view_transform
 )
 
-class AntRenderer(BaseRoboRenderer):
+class HopperRenderer(BaseRoboRenderer):
     def __init__(self, img_height=84, img_width=84, device="cuda"):
-        super().__init__(os.path.join(proj_dir, "assets/xmls/ant.xml"), img_height=img_height, img_width=img_width, device=device)
+        super().__init__(os.path.join(proj_dir, "assets/xmls/hopper.xml"), img_height=img_height, img_width=img_width, device=device)
 
     def build_background(self):
-        self.raw_meshes["background"] = [create_floor(x_dim=150, y_dim=10, device=self.device, center=[10, 0, 0]),
-                                        create_sky_plane(center=[10, 5, 10], z_dim=20, x_dim=150, device=self.device)
+        self.raw_meshes["background"] = [create_floor(x_dim=150, y_dim=2, device=self.device, center=[10, 0, 0]),
+                                        create_sky_plane(center=[10, 1, 3.25], z_dim=10, x_dim=150, device=self.device)
                                         ]
-
+        
     def get_camera(self, qpos, camera_id):
         qpos = torch.atleast_2d(qpos)
         batch_size = qpos.shape[0]
+        pos = torch.concat([qpos[:, 0:1], torch.zeros_like(qpos[:, 0:1]), qpos[:, 1:2]], dim=1)
         R, T = look_at_view_transform(
-            eye=torch.tile(torch.tensor([0.5, -2, 1], dtype=torch.float32, device=self.device), (batch_size, 1)) + qpos[:,:3],
-            at=torch.tile(torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device), (batch_size, 1)) + qpos[:, :3],
+            eye=torch.tile(torch.tensor([0, -2.8, 1.35], dtype=torch.float32, device=self.device), (batch_size, 1)) + pos,
+            at=torch.tile(torch.tensor([0, 0, 1.25], dtype=torch.float32, device=self.device), (batch_size, 1)) + pos,
             up=torch.tile(torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device), (batch_size, 1)),
             device=self.device)
                 
-        return FoVPerspectiveCameras(znear=0.01, zfar=100, fov=90, R=R, T=T, device=self.device)
+        return FoVPerspectiveCameras(znear=0.01, zfar=100, fov=45, R=R, T=T, device=self.device)
 
     def get_raster_settings(self, camera_id):
         if camera_id == 0:
-            # img size for training 
+            # img size for training
             return RasterizationSettings(image_size=(self.img_height, self.img_width))
         else:
             # img size for rendering
@@ -41,12 +42,12 @@ class AntRenderer(BaseRoboRenderer):
         qpos = torch.atleast_2d(qpos)
         batch_size = qpos.shape[0]
         
-        light_position = qpos[:, :3] + torch.tensor([[0.0, 0.0, 6.0]], device=self.device).expand(batch_size, -1)
+        light_position = torch.concat([qpos[:, 0:1], torch.zeros_like(qpos[:, 0:1]), qpos[:, 1:2]], dim=1) + torch.tensor([[0.0, 0.0, 2.0]], device=self.device).expand(batch_size, -1)
 
         # Define the light parameters
         ambient_color = torch.tensor([[0.4, 0.4, 0.4]], device=self.device).expand(batch_size, -1)   # Ambient light color
         diffuse_color = torch.tensor([[0.8, 0.8, 0.8]], device=self.device).expand(batch_size, -1)   # Diffuse light color
-        specular_color = torch.tensor([[0.3, 0.3, 0.3]], device=self.device) .expand(batch_size, -1) # Specular highlights
+        specular_color = torch.tensor([[0.1, 0.1, 0.1]], device=self.device) .expand(batch_size, -1) # Specular highlights
 
         # Create the PointLight object in PyTorch3D
         return PointLights(
@@ -59,7 +60,7 @@ class AntRenderer(BaseRoboRenderer):
         
     def get_transform(self, qpos):
         qpos = torch.atleast_2d(qpos)
-        return self.chain.forward_kinematics(qpos[:, 7:], root_pos=qpos[:, :3], root_quat=qpos[:, 3:7])
+        return self.chain.forward_kinematics(qpos)
 
     def get_renderer(self, qpos, camera_id):
         cameras = self.get_camera(qpos, camera_id)

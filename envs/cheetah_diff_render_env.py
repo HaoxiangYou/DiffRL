@@ -1,11 +1,4 @@
-# Copyright (c) 2022 NVIDIA CORPORATION.  All rights reserved.
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
-from envs.dflex_env import DFlexEnv
+from envs.dflex_diff_render_env import DFlexDiffRenderEnv
 import math
 import torch
 
@@ -21,23 +14,24 @@ np.set_printoptions(precision=5, linewidth=256, suppress=True)
 
 from utils import load_utils as lu
 from utils import torch_utils as tu
-from viewer.maniskill_viewer import ManiskillViewer
+from viewer.torch3d_robo import CheetahRenderer
 
-class CheetahEnv(DFlexEnv):
+class CheetahDiffRenderEnv(DFlexDiffRenderEnv):
 
-    def __init__(self, device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84, no_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
+    def __init__(self, device='cuda:0', num_envs=4096, seed=0, episode_length=1000, img_height=84, img_width=84, no_grad=True, 
+                no_vis_grad=True, stochastic_init=False, MM_caching_frequency=1, early_termination=True):
         num_state_obs = 17
         num_act = 6
     
-        super(CheetahEnv, self).__init__(num_envs, num_state_obs, num_act, episode_length, MM_caching_frequency, seed, 
-                                    no_grad=no_grad, device=device, img_height=img_height, img_width=img_width)
+        super(CheetahDiffRenderEnv, self).__init__(num_envs, num_state_obs, num_act, episode_length, MM_caching_frequency, seed, 
+                                    no_grad=no_grad, no_vis_grad=no_vis_grad, device=device, img_height=img_height, img_width=img_width)
 
         self.stochastic_init = stochastic_init
         self.early_termination = early_termination
 
         self.init_sim()
 
-        self.renderer = ManiskillViewer(env_name="CheetahVis", num_env=num_envs, height=img_height, width=img_width)
+        self.renderer = CheetahRenderer(img_height=img_height, img_width=img_width, device=device)
 
         # other parameters
         self.action_strength = 200.0
@@ -122,17 +116,23 @@ class CheetahEnv(DFlexEnv):
     """
     def render(self, env_ids):
         mujoco_joint_qs = self.get_mujoco_joint_q(self.state.joint_q.view(self.num_envs, -1))
-        pixels = self.renderer.render(mujoco_joint_qs)[env_ids]
+        # scale such it has similar magnitude to uint8
+        pixels = self.renderer.render(mujoco_joint_qs)[env_ids,:,:,:3] * 255
         return pixels
+
         
     """
     This function render a given trajectory (time sequences of joint_q in shac conventions) in shape (traj_length, num_env, num_q)
     """
+    @torch.no_grad()
     def render_traj(self, traj, recording=False):
         frames = []
+        camera_id = 1 if recording else 0
         for mujoco_joint_qs in traj:
-            mujoco_joint_qs = self.get_mujoco_joint_q(mujoco_joint_qs).detach()
-            frames.append(self.renderer.render(mujoco_joint_qs, recording=recording))
+            mujoco_joint_qs = self.get_mujoco_joint_q(mujoco_joint_qs)
+            frames.append(
+                (self.renderer.render(mujoco_joint_qs, camera_id=camera_id)[:,:,:,:3] * 255).cpu().to(torch.uint8)
+            )
         return torch.stack(frames)
 
     def step(self, actions, enable_reset = True, enable_vis_obs = False):
@@ -158,10 +158,18 @@ class CheetahEnv(DFlexEnv):
         if enable_vis_obs:
             if enable_reset:
                 if len(env_ids) < self.num_envs:
-                    self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+                    if self.no_vis_grad:
+                        with torch.no_grad():
+                            self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
+                    else:
+                        self.calculateVisualObservations((self.reset_buf == 0).nonzero(as_tuple=False).squeeze(-1))
             else:
-                self.calculateVisualObservations(torch.arange(self.num_envs, dtype=torch.long, device=self.device))
-
+                if self.no_vis_grad:
+                    with torch.no_grad():
+                        self.calculateVisualObservations(torch.arange(self.num_envs, dtype=torch.long, device=self.device))
+                else:
+                    self.calculateVisualObservations(torch.arange(self.num_envs, dtype=torch.long, device=self.device))
+        
         if self.no_grad == False and enable_reset == True:
             self.state_obs_buf_before_reset = self.state_obs_buf.clone()
             self.extras = {
@@ -213,10 +221,13 @@ class CheetahEnv(DFlexEnv):
             
             self.calculateStateObservations()
             if enable_vis_obs:
-                pixels = self.render(env_ids)
-                # three identical images at reset
-                pixels = torch.tile(torch.moveaxis(pixels, 3, 1), (1, 3, 1, 1))
-                self.vis_obs_buf[env_ids] = pixels
+                if self.no_vis_grad:
+                    with torch.no_grad():
+                        pixels = self.render(env_ids)
+                        self.vis_obs_buf[env_ids] = torch.tile(torch.moveaxis(pixels, 3, 1), (1, 3, 1, 1))
+                else:
+                    pixels = self.render(env_ids)
+                    self.vis_obs_buf[env_ids] = torch.tile(torch.moveaxis(pixels, 3, 1), (1, 3, 1, 1))
         
             
         obs = {"state_obs": self.state_obs_buf}
@@ -251,6 +262,7 @@ class CheetahEnv(DFlexEnv):
             self.state.joint_qd = current_joint_qd
             self.actions = checkpoint['actions'].clone()
             self.progress_buf = checkpoint['progress_buf'].clone()
+            self.vis_obs_buf = self.vis_obs_buf.clone()
 
     '''
     This function starts collecting a new trajectory from the current states but cuts off the computation graph to the previous states.
@@ -288,15 +300,12 @@ class CheetahEnv(DFlexEnv):
     
     Each visual observation is a stack of three images from [t_2, t_1] to current 
 
-    The resulted vis_obs_buf is not differentiable 
     """
-    @torch.no_grad()
     def calculateVisualObservations(self, env_ids):
-        # shifting images forword 
-        self.vis_obs_buf[env_ids, :6, :, :] = self.vis_obs_buf[env_ids, 3:, :, :]
-        # append new images
-        pixels = self.render(env_ids)
-        self.vis_obs_buf[env_ids, 6:, :, :] = torch.moveaxis(pixels, 3, 1)
+        pixels = torch.moveaxis(self.render(env_ids), 3, 1)
+        old_frames = self.vis_obs_buf[env_ids, 3:, :, :]
+        new_vis_buf = torch.cat([old_frames, pixels], dim=1)
+        self.vis_obs_buf[env_ids] = new_vis_buf
 
     def calculateReward(self):
         progress_reward = self.state_obs_buf[:, 8]
