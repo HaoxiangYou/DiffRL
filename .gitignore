@@ -174,3 +174,4 @@ examples/logs_teacher/
 examples/logs_curl/
 examples/*.sh
 .vscode/
+draw_dva_figures/
