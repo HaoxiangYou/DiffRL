@@ -59,10 +59,6 @@ class MakeDMfromdFlex(dm_env.Environment):
                             stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
                             MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
                             no_grad = True)
-        print('num_envs = ', self.env.num_envs)
-        print('num_actions = ', self.env.num_actions)
-        print('num_state_obs = ', self.env.num_state_obs)
-        print('num_vis_obs =', self.env.num_vis_obs)
         self.num_envs = self.env.num_envs
         self.num_actions = self.env.num_actions
         self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder

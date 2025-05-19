@@ -175,3 +175,4 @@ examples/logs_curl/
 examples/*.sh
 .vscode/
 draw_dva_figures/
+Dva_website/
