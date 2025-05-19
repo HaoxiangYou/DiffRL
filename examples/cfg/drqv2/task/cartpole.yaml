@@ -14,8 +14,6 @@ params:
     seed: 300
     
   config:
-    name: df_cartpole_drqv2
-    dmc_render_model: cartpole.urdf
     num_actors: 16
     img_height: 84
     img_width: 84

@@ -25,7 +25,6 @@ from externals.drqv2 import utils
 from externals.drqv2 import dmc
 from externals.drqv2.logger import Logger
 from externals.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
-# from externals.drqv2.video import TrainVideoRecorder, VideoRecorder
 from viewer.video_recorder import VideoRecorder
 from utils.common import *
 from viewer.dmc_viewer import DMCViewer
@@ -62,8 +61,8 @@ class MakeDMfromdFlex(dm_env.Environment):
                             no_grad = True)
         self.num_envs = self.env.num_envs
         self.num_actions = self.env.num_actions
-        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
-        self.camera_id = 0 # render camera id. 
+        # self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
+        # self.camera_id = 0 # render camera id. 
         self.device = cfg["params"]["general"]["device"]
         self.raw_rew = np.zeros((self.env.num_envs)) 
         self.sim_dt = self.env.sim_dt

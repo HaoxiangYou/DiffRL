@@ -47,7 +47,7 @@ params:
   misc:
     save_tb: True
     save_buffer: False
-    save_video: False
+    save_video: True
     save_model: False
     detach_encoder: False
     log_interval: 100

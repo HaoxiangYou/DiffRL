@@ -23,7 +23,8 @@ from utils.time_report import TimeReport
 from utils.average_meter import AverageMeter
 import externals.curl.utils as utils
 from externals.curl.logger import Logger
-from externals.curl.video import VideoRecorder
+# from externals.curl.video import VideoRecorder
+from viewer.video_recorder import VideoRecorder
 import pickle
 
 from externals.curl.curl_sac import CurlSacAgent
@@ -38,12 +39,13 @@ class GymEnvWrapperfromdFlex(core.Env):
         self.env = env
         self.num_envs = self.env.num_envs
         self.num_actions = self.env.num_actions
-        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
-        self.camera_id = 0 # render camera id. 
-        self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
-        self.dmc_render_model = cfg["params"]["general"]["dmc_render_model"]
-        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
-                                            camera_id=0, height=self.render_size, width=self.render_size)
+        # self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
+        # self.camera_id = 0 # render camera id. 
+        # self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
+        # self.dmc_render_model = cfg["params"]["general"]["dmc_render_model"]
+        # self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
+        #                                     camera_id=0, height=self.render_size, width=self.render_size)
+        self.sim_dt = self.env.sim_dt
         self.raw_rew = np.zeros((self.env.num_envs)) 
         self.device = cfg["params"]["general"]["device"]
 
@@ -92,16 +94,16 @@ class GymEnvWrapperfromdFlex(core.Env):
     def __getattr__(self, name):
         return getattr(self._env, name)
     
-    def render(self):
-        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
-        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
+    # def render(self):
+    #     mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
+    #     return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
         
 def print_info(*message):
     print('\033[96m', *message, '\033[0m')
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log_dir', default='./logs_curl', type=str)
+    parser.add_argument('--log_dir', default='./logs/logs_curl', type=str)
     parser.add_argument('--cfg', default='./cfg/curl/hopper.yaml', type=str)
     args = parser.parse_args()
     return args
@@ -122,17 +124,28 @@ def load_env(cfg, eval=False):
     env = utils.ActionRepeatMultiEnvsWrapper(env, cfg["params"]["general"].get("action_repeat", 1))
     return env
 
-def evaluate(env, agent, video, num_episodes, L, step, cfg):
+def save_video(joint_qs, save_dir=None, max_video_length=800, video_recorder=None, env=None):
+    video_recorder.update_save_dir(save_dir)
+    frames = env.env.env.env.render_traj(joint_qs[:max_video_length], recording=True)
+    for i in range(frames.shape[1]):
+        video_recorder.reset()
+        for j in range(frames.shape[0]):
+            video_recorder.append(frames[j, i])
+        video_recorder.save("eval_traj_{}.mp4".format(i))
+
+def evaluate(env, agent, video, num_episodes, L, step, cfg, video_dir):
     all_ep_rewards = []
     def run_eval_loop(sample_stochastically=True):
         start_time = time.time()
         prefix = 'stochastic_' if sample_stochastically else ''
+        joint_qs = []
         for i in range(num_episodes):
             # In paralle case, obs shape becomes (1, 9, pre_crop_img_size, pre_crop_img_size)
             obs = env.reset(force_reset = True, enable_vis_obs=True)
-            video.init(enabled=(i == 0))
+            # video.init(enabled=(i == 0))
             done = False
             episode_reward = 0
+            joint_qs.append(env.env.env.env.state.joint_q.view(env.num_envs, -1).detach().clone())
             while not done:
                 # center crop image
                 if cfg["params"]["encoder"]["encoder_type"] == 'pixel':
@@ -143,10 +156,10 @@ def evaluate(env, agent, video, num_episodes, L, step, cfg):
                     else:
                         action = agent.select_action(obs)
                 obs, reward, done, _ = env.step(action)
-                video.record(env)
+                joint_qs.append(env.env.env.env.state.joint_q.view(env.num_envs, -1).detach().clone())
+                # video.record(env)
                 episode_reward += reward.item()
-            video.save('%d.mp4' % step)
-            
+            # video.save('%d.mp4' % step)
             L.log('eval/' + prefix + 'episode_reward', episode_reward, step)
             all_ep_rewards.append(episode_reward)
         
@@ -155,7 +168,9 @@ def evaluate(env, agent, video, num_episodes, L, step, cfg):
         best_ep_reward = np.max(all_ep_rewards)
         L.log('eval/' + prefix + 'mean_episode_reward', mean_ep_reward, step)
         L.log('eval/' + prefix + 'best_episode_reward', best_ep_reward, step)
-
+        if video is not None:
+            joint_qs = torch.stack(joint_qs)
+            save_video(joint_qs=joint_qs, save_dir=video_dir, video_recorder=video, env=env)
     run_eval_loop(sample_stochastically=False)
     L.dump(step)
 
@@ -226,7 +241,10 @@ def main():
     buffer_dir = utils.make_dir(os.path.join(args.log_dir, 'buffer'))
     time_report_dir = pathlib.Path(args.log_dir).expanduser() / "time_reports"
 
-    video = VideoRecorder(video_dir if cfg["params"]["misc"]["save_video"] else None)
+    if cfg["params"]["misc"]["save_video"]:
+        video = VideoRecorder(fps=int(1/eval_env.env.sim_dt))
+    else:
+        video = None
 
     with open(os.path.join(args.log_dir, 'args.json'), 'w') as f:
         json.dump(vars(args), f, sort_keys=True, indent=4)
@@ -295,7 +313,7 @@ def main():
         time_report.start_timer("evaluation time")
         if step % cfg["params"]["eval"]["eval_freq"] == 0:
             L.log('eval/episode', episode, step)
-            evaluate(eval_env, agent, video, cfg["params"]["eval"]["num_eval_episodes"], L, step, cfg)
+            evaluate(eval_env, agent, video, cfg["params"]["eval"]["num_eval_episodes"], L, step, cfg, os.path.join(video_dir, f'iter_{step}'))
             if cfg["params"]["misc"]["save_model"]:
                 agent.save_curl(model_dir, step)
             if cfg["params"]["misc"]["save_buffer"]:
