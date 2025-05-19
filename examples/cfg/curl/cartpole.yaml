@@ -1,9 +1,9 @@
 params:  
   diff_env:
-    name: CheetahEnv
+    name: CartPoleEnv
     stochastic_env: True
-    episode_length: 1000
-    MM_caching_frequency: 16
+    episode_length: 240
+    MM_caching_frequency: 4
 
   train:
     agent: curl_sac
@@ -54,9 +54,9 @@ params:
 
   general:
     device: cuda:0
-    dmc_render_model: half_cheetah
+    dmc_render_model: ant
     num_actors: 16
-    seed: 1000
+    seed: 200
     image_size: 84
     action_repeat: 2
     frame_stack: 3

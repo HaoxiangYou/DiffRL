@@ -6,13 +6,12 @@ defaults:
 # task settings
 frame_stack: 3
 action_repeat: 2
-# num_train_frames: 3100000
 discount: 0.99
 # train settings
-num_seed_frames: 32000 # 4000 # 32000
+num_seed_frames: 4000 
 # eval
 eval_every_frames: 500000
-num_eval_episodes: 10 # 1 
+num_eval_episodes: 10 
 # snapshot
 save_snapshot: true
 save_every_frames: 100000
@@ -50,7 +49,7 @@ agent:
 
 hydra:
   run:
-    dir: ./logs_drqv2/${now:%Y.%m.%d}/${now:%H%M%S}_${hydra.job.override_dirname}
+    dir: ./logs/logs_drqv2/${now:%Y.%m.%d}/${now:%H%M%S}_${hydra.job.override_dirname}
   sweep:
     dir: ./exp/${now:%Y.%m.%d}/${now:%H%M}_${agent_cfg.experiment}
     subdir: ${hydra.job.num}

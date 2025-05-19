@@ -25,7 +25,7 @@ from externals.drqv2 import utils
 from externals.drqv2 import dmc
 from externals.drqv2.logger import Logger
 from externals.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
-from externals.drqv2.video import TrainVideoRecorder, VideoRecorder
+from viewer.video_recorder import VideoRecorder
 from utils.common import *
 from viewer.dmc_viewer import DMCViewer
 from utils.time_report import TimeReport
@@ -59,20 +59,13 @@ class MakeDMfromdFlex(dm_env.Environment):
                             stochastic_init = cfg["params"]["diff_env"].get("stochastic_env", True), \
                             MM_caching_frequency = cfg["params"]['diff_env'].get('MM_caching_frequency', 1), \
                             no_grad = True)
-        print('num_envs = ', self.env.num_envs)
-        print('num_actions = ', self.env.num_actions)
-        print('num_state_obs = ', self.env.num_state_obs)
-        print('num_vis_obs =', self.env.num_vis_obs)
         self.num_envs = self.env.num_envs
         self.num_actions = self.env.num_actions
-        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
-        self.camera_id = 0 # render camera id. 
-        self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
-        self.dmc_render_model = cfg["params"]["config"]["dmc_render_model"]
-        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
-                                            camera_id=0, height=self.render_size, width=self.render_size)
+        # self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
+        # self.camera_id = 0 # render camera id. 
         self.device = cfg["params"]["general"]["device"]
         self.raw_rew = np.zeros((self.env.num_envs)) 
+        self.sim_dt = self.env.sim_dt
         if hasattr(self.env, 'observation_spec'):
             self._observation_spec = self._env.observation_spec()
         else:
@@ -132,12 +125,6 @@ class MakeDMfromdFlex(dm_env.Environment):
     def discount_spec(self):
         return self._discount_spec
     
-    def render(self):
-        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
-        # self.dmc_render.render(mujoco_joint_q, self.render_kwargs)
-        # self.env.render(mujoco_joint_q)
-        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
-
 class Workspace:
     def __init__(self, cfg):
         self.work_dir = Path.cwd()
@@ -146,6 +133,7 @@ class Workspace:
         self.num_envs = cfg["params"]["config"]["num_actors"]
         self.img_height = cfg["params"]["config"].get("img_height", 84)
         self.img_width = cfg["params"]["config"].get("img_width", 84)
+        self.if_render = cfg["params"]["general"]["render"]
         utils.set_seed_everywhere(cfg.seed)
         self.device = torch.device(cfg.device)
         self.setup()
@@ -200,10 +188,9 @@ class Workspace:
             self.cfg.save_snapshot, self.cfg.nstep, self.cfg.discount)
         self._replay_iter = None
 
-        self.video_recorder = VideoRecorder(
-            self.work_dir if self.cfg.save_video else None)
-        self.train_video_recorder = TrainVideoRecorder(
-            self.work_dir if self.cfg.save_train_video else None)
+        self.video_recorder = None 
+        if self.if_render:
+            self.video_recorder = VideoRecorder(fps=int(1/self.eval_env.sim_dt))
 
     @property
     def global_step(self):
@@ -222,16 +209,26 @@ class Workspace:
         if self._replay_iter is None:
             self._replay_iter = iter(self.replay_loader)
         return self._replay_iter
+    
+    def save_video(self, joint_qs, save_dir=None, max_video_length=800):
+        self.video_recorder.update_save_dir(save_dir)
+        frames = self.eval_env.env.render_traj(joint_qs[:max_video_length], recording=True)
+        for i in range(frames.shape[1]):
+            self.video_recorder.reset()
+            for j in range(frames.shape[0]):
+                self.video_recorder.append(frames[j, i])
+            self.video_recorder.save("eval_traj_{}.mp4".format(i))
 
     def eval(self, file_name):
         eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
         step, episode, total_reward = 0, 0, 0
         save_dir = self.work_dir / "eval" / file_name 
+        joint_qs = []
         os.makedirs(save_dir, exist_ok=True)
 
         while eval_until_episode(episode):
             time_step = self.eval_env.reset(env_ids = None, force_reset = True)
-            self.video_recorder.init(self.eval_env, enabled=(episode == 0))
+            joint_qs.append(self.eval_env.env.state.joint_q.view(self.eval_env.num_envs, -1).detach().clone())
             while not time_step[0].last():
                 with torch.no_grad(), utils.eval_mode(self.agent):
                     actions = self.agent.act(time_step[0].observation,
@@ -240,13 +237,16 @@ class Workspace:
                 time_step = self.eval_env.step(actions=actions, 
                                                 enable_reset = False, 
                                                 enable_vis_obs = True)
-                self.video_recorder.record(self.eval_env)
+                joint_qs.append(self.eval_env.env.state.joint_q.view(self.eval_env.num_envs, -1).detach().clone())
                 total_reward += time_step[0].reward
                 step += 1
             episode += 1
             if time_step[0].last():
                 self.eval_env.reset(force_reset = True, enable_vis_obs=True)
-            self.video_recorder.save(file_name= f"{file_name}/eval_video.mp4")
+
+        if self.video_recorder is not None:
+            joint_qs = torch.stack(joint_qs)
+            self.save_video(joint_qs, save_dir=save_dir)
         return total_reward / episode
 
     def process_time_steps(self, store_time_steps):

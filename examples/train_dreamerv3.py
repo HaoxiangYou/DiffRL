@@ -13,8 +13,6 @@ sys.path.append(project_dir)
 import numpy as np
 import ruamel.yaml as yaml
 
-project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(project_dir)
 sys.path.append(str(pathlib.Path(__file__).parent))
 
 import externals.dreamerv3.exploration as expl
@@ -26,7 +24,6 @@ from externals.dreamerv3.parallel import Parallel, Damy
 import dm_env
 from dm_env import specs
 import envs
-from viewer.dmc_viewer import DMCViewer
 from utils.time_report import TimeReport
 from utils.average_meter import AverageMeter
 from utils.common import *
@@ -55,18 +52,9 @@ class MakeDMfromdFlex(dm_env.Environment):
                             stochastic_init = cfg.stochastic_env, \
                             MM_caching_frequency = cfg.MM_caching_frequency, \
                             no_grad = True)
-        print('num_envs = ', self.env.num_envs)
-        print('num_actions = ', self.env.num_actions)
-        print('num_state_obs = ', self.env.num_state_obs)
-        print('num_vis_obs =', self.env.num_vis_obs)
+
         self.num_envs = self.env.num_envs
         self.num_actions = self.env.num_actions
-        self.render_size = 256 # fixed due to the data mismatch with TrainVideoRecorder
-        self.camera_id = 0 # render camera id. 
-        self.render_kwargs = dict(height=self.render_size, width=self.render_size, camera_id=self.camera_id)
-        self.dmc_render_model = cfg.dmc_render_model[task]
-        self.dmc_render = DMCViewer(file_path=os.path.join(project_dir, f"envs/assets/{self.dmc_render_model}.xml"), 
-                                            camera_id=0, height=self.render_size, width=self.render_size)
         self.device = cfg.device
         self.raw_rew = np.zeros((self.env.num_envs)) 
         if hasattr(self.env, 'observation_spec'):
@@ -129,10 +117,6 @@ class MakeDMfromdFlex(dm_env.Environment):
     def discount_spec(self):
         return self._discount_spec
     
-    def render(self):
-        mujoco_joint_q = self.env.get_mujoco_joint_q(self.env.state.joint_q.view(self.env.num_envs, -1)[0]).detach().cpu().numpy()
-        return self.dmc_render.render(mujoco_joint_q, self.render_kwargs) # since we only have one env, so the envid is 0
-
 class Dreamer(nn.Module):
     def __init__(self, obs_space, act_space, config, logger, dataset):
         super(Dreamer, self).__init__()
@@ -348,6 +332,7 @@ def main(config):
     time_report.add_timer("prefill dataset")  
     time_report.add_timer("IO time")
     time_report.add_timer("Logger time")
+    time_report.add_timer("NN Training")
 
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:

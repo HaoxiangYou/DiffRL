@@ -231,15 +231,15 @@ class FrameStack(gym.Wrapper):
 class ActionRepeatMultiEnvsWrapper(gym.Wrapper):
     def __init__(self, env, num_repeats):
         gym.Wrapper.__init__(self, env)
-        self._env = env
+        self.env = env
         self._num_repeats = num_repeats
 
     def step(self, actions, enable_reset = False, enable_vis_obs = True):
-        reward_cumulative = np.zeros(self._env.num_envs, np.float32)
+        reward_cumulative = np.zeros(self.env.num_envs, np.float32)
         done_envs = np.zeros(self._env.num_envs, np.int32)
         done_envs_dict = {} # this keep track of which envs are done so that we don't repeat them  
         for i in range(self._num_repeats):
-            next_obss, rewards, dones, _ = self._env.step(actions = actions, 
+            next_obss, rewards, dones, _ = self.env.step(actions = actions, 
                                         enable_reset = enable_reset, 
                                         enable_vis_obs = enable_vis_obs)
             for idx, (next_obs, reward, done) in enumerate(zip(next_obss, rewards, dones)):
@@ -260,18 +260,18 @@ class ActionRepeatMultiEnvsWrapper(gym.Wrapper):
         return next_obss, reward_cumulative/self._num_repeats, done_envs, {}
 
     def observation_spec(self):
-        return self._env.observation_spec()
+        return self.env.observation_spec()
 
     def action_spec(self):
-        return self._env.action_spec()
+        return self.env.action_spec()
 
     def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
-        return self._env.reset(env_ids=env_ids, 
+        return self.env.reset(env_ids=env_ids, 
                                 force_reset=force_reset,
                                 enable_vis_obs=enable_vis_obs)
 
     def __getattr__(self, name):
-        return getattr(self._env, name)
+        return getattr(self.env, name)
 
 from datetime import datetime
 def get_time_stamp():
@@ -352,8 +352,15 @@ class ActionDTypeWrapperdFlex(gym.Wrapper):
 
     def step(self, actions, enable_reset = False, enable_vis_obs = True):
         actions = actions.astype(self._dtype)
-        return self._env.step(actions = actions, enable_reset = False, enable_vis_obs = True)
+        return self._env.step(actions = actions, 
+                             enable_reset = enable_reset, 
+                             enable_vis_obs = enable_vis_obs)
 
     def reset(self, env_ids = None, force_reset = True, enable_vis_obs=True):
-        return self._env.reset(env_ids = None, force_reset = True, enable_vis_obs=True)
+        return self._env.reset(env_ids = env_ids, 
+                              force_reset = force_reset, 
+                              enable_vis_obs=enable_vis_obs)
+    
+    def __getattr__(self, name):
+        return getattr(self._env, name)
 
