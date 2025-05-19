@@ -348,6 +348,7 @@ def main(config):
     time_report.add_timer("prefill dataset")  
     time_report.add_timer("IO time")
     time_report.add_timer("Logger time")
+    time_report.add_timer("NN Training")
 
     tools.set_seed_everywhere(config.seed)
     if config.deterministic_run:

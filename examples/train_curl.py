@@ -319,7 +319,7 @@ def main():
 
         # run training update
         if step >= cfg["params"]["train"]["init_steps"]:
-            num_updates = num_envs # TODO: Maybe need more updates. Will update this later 
+            num_updates = num_envs
             for j in range(step, step + num_updates):
                 agent.update(replay_buffer, L, j, time_report)
 
