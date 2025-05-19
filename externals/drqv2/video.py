@@ -25,7 +25,6 @@ class VideoRecorder:
         self.record(env)
 
     def record(self, env):
-        
         if self.enabled:
             if hasattr(env, 'physics'):
                 frame = env.physics.render(height=self.render_size,

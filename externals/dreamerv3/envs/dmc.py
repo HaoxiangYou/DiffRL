@@ -30,12 +30,6 @@ class DeepMindControl:
     @property
     def observation_space(self):
         spaces = {}
-        # for key, value in self._env.observation_spec().items():
-        #     if len(value.shape) == 0:
-        #         shape = (1,)
-        #     else:
-        #         shape = value.shape
-        #     spaces[key] = gym.spaces.Box(-np.inf, np.inf, shape, dtype=np.float32)
         spaces["image"] = gym.spaces.Box(0, 255, self._size + (3,), dtype=np.uint8)
         return gym.spaces.Dict(spaces)
 
@@ -84,7 +78,7 @@ class DeepMindControlDflex:
         self._action_repeat = action_repeat
         self._size = size
         if camera is None:
-            camera = 0 # dict(quadruped=2).get(domain, 0)
+            camera = 0
         self._camera = camera
         self.reward_range = [-np.inf, np.inf]
 
@@ -110,7 +104,7 @@ class DeepMindControlDflex:
             if time_step.last():
                 break
         obs = {} 
-        obs["image"] = time_step.observation # self.render()
+        obs["image"] = time_step.observation 
         # There is no terminal state in DMC
         obs["is_terminal"] = False if time_step.first() else time_step.discount == 0
         obs["is_first"] = time_step.first()
@@ -125,7 +119,7 @@ class DeepMindControlDflex:
                                     enable_vis_obs=enable_vis_obs)
 
         obs = {}
-        obs["image"] = time_step.observation # self.render()
+        obs["image"] = time_step.observation
         obs["is_terminal"] = False if time_step.first() else time_step.discount == 0
         obs["is_first"] = time_step.first()
         return obs

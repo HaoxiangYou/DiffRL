@@ -6,18 +6,16 @@ stddev_schedule: 'linear(1.0,0.1,2000000)'
 params:  
   diff_env:
     name: HumanoidEnv
-    stochastic_env: False # True
+    stochastic_env: False
     episode_length: 1000
     MM_caching_frequency: 48
 
   general:
     device: cuda:0
-    render: False 
+    render: True 
     seed: 400
   
   config:
-    name: df_humanoid_drqv2
-    dmc_render_model: humanoid
     num_actors: 32 
     img_height: 84
     img_width: 84

@@ -10,12 +10,10 @@ params:
 
   general:
     device: cuda:0
-    render: False 
+    render: True 
     seed: 300
 
   config:
-    name: df_ant_drqv2
-    dmc_render_model: ant
     num_actors: 32
     img_height: 84
     img_width: 84
