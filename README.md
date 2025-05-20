@@ -1,19 +1,21 @@
 # D.VA
-Official Implementation of Accelerating Visual-Policy Learning through Parallel Differentiable Simulation.
+Official Implementation of 
+<td style="padding:20px;width:75%;vertical-align:middle">
+      <a href="https://haoxiangyou.github.io/Dva_website/" target="_blank">
+      <b> Accelerating Visual-Policy Learning through Parallel Differentiable Simulation
+      </b>
+      </a>
+      <br>
+      <a href="https://haoxiangyou.github.io/" target="_blank">Haoxiang You</a>,
+      <a href="https://yilangliu.github.io/" target="_blank">Yilang Liu</a> and
+      <a href="https://ialab.yale.edu/" target="_blank">Ian Abraham</a>
+      <br>
+      <a href="https://www.arxiv.org/abs/2505.10646">paper</a> /
+      <a href="https://haoxiangyou.github.io/Dva_website/" target="_blank">project page</a>
+    <br>
+</td>
 
-This codebase is built on top of [DiffRL](https://github.com/NVlabs/DiffRL) by Jie Xu, NIVIDA (Paper: https://arxiv.org/abs/2204.07137). 
-
-We also acknowledge and credit various open-source implementations that helped us develop the baseline methods. These are listed at the end of this document.
-
-## Installation
-
-## Instruction
-
-## Methods
-
-## Results
-
-## Citation
+<br>
 
 If you use this repo in your research, please consider citing the paper as follows:
 
@@ -28,6 +30,19 @@ If you use this repo in your research, please consider citing the paper as follo
       url={https://arxiv.org/abs/2505.10646}, 
 }
 ```
+
+<br>
+
+This codebase is built on top of various open-source implementations, which we list at the end of this document.
+
+## Installation
+
+
+## Instruction
+
+## Methods
+
+## Results
 
 ## Licenses
 
