@@ -10,7 +10,7 @@ dependencies:
   - pip:
     - numpy==1.26.4
     - dm_control==1.0.28
-    - urdfpy==0.0.4
+    - urchin==0.0.29
     - networkx==2.5.1
     - gym==0.26.2
     - pyyaml==6.0
@@ -24,6 +24,4 @@ dependencies:
     - hydra-submitit-launcher==1.1.5
     - ruamel.yaml==0.17.4
     - mujoco==3.3.0
-    # Use a prebuilt version of PyTorch3D compatible with PyTorch 2.5.1 and CUDA 12.4
-    - pytorch3d==0.7.8+pt2.5.1cu124 --extra-index-url https://miropsota.github.io/torch_packages_builder
     

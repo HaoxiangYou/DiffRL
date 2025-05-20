@@ -48,11 +48,17 @@ This codebase is built on top of various open-source implementations, which we l
   conda activate dva
   ```
 
-- dflex
+- Build dflex
 
   ```
   cd dflex
   pip install -e .
+  ```
+
+- Build pytorch3d (only required for SHAC baseline)
+  ```
+  # Use a prebuilt version of PyTorch3D compatible with PyTorch 2.5.1 and CUDA 12.4
+  pip install pytorch3d==0.7.8+pt2.5.1cu124 --extra-index-url https://miropsota.github.io/torch_packages_builder
   ```
 
 ### Test Examples
@@ -93,6 +99,7 @@ To run SHAC with differentiable render, using the following command
 python train_shac.py --cfg ./cfg/shac/hopper_vis.yaml  --logdir ./logs/Hopper/shac
 ```
 Note, the SHAC baseline requires a differentiable environment, which is not used by default in other methods.
+
 To run our method (D.VA) under the same differentiable setting, simply replace the config file:`cfg/dva/hopper.yaml` to `cfg/dva/diff_render_hopper.yaml` 
 
 ## Methods
