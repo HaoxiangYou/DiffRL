@@ -1,3 +1,5 @@
+# License: see [LICENSE, LICENSES/DiffRL/LICENSE]
+
 from envs.dflex_env import DFlexEnv
 import math
 import torch
