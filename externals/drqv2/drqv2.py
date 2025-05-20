@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import utils
+import drqv2_utils
 
 
 class RandomShiftsAug(nn.Module):
@@ -58,7 +58,7 @@ class Encoder(nn.Module):
                                      nn.ReLU(), nn.Conv2d(32, 32, 3, stride=1),
                                      nn.ReLU())
 
-        self.apply(utils.weight_init)
+        self.apply(drqv2_utils.weight_init)
 
     def forward(self, obs):
         obs = obs / 255.0 - 0.5
@@ -80,16 +80,15 @@ class Actor(nn.Module):
                                     nn.ReLU(inplace=True),
                                     nn.Linear(hidden_dim, action_shape[0]))
 
-        self.apply(utils.weight_init)
+        self.apply(drqv2_utils.weight_init)
 
     def forward(self, obs, std):
         h = self.trunk(obs)
-
         mu = self.policy(h)
         mu = torch.tanh(mu)
         std = torch.ones_like(mu) * std
 
-        dist = utils.TruncatedNormal(mu, std)
+        dist = drqv2_utils.TruncatedNormal(mu, std)
         return dist
 
 
@@ -110,7 +109,7 @@ class Critic(nn.Module):
             nn.ReLU(inplace=True), nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(inplace=True), nn.Linear(hidden_dim, 1))
 
-        self.apply(utils.weight_init)
+        self.apply(drqv2_utils.weight_init)
 
     def forward(self, obs, action):
         h = self.trunk(obs)
@@ -161,10 +160,22 @@ class DrQV2Agent:
         self.actor.train(training)
         self.critic.train(training)
 
-    def act(self, obs, step, eval_mode):
+    def act(self, obs, step, eval_mode, time_report=None):
+        if time_report is not None:
+            time_report.start_timer("IO Time")
         obs = torch.as_tensor(obs, device=self.device)
-        obs = self.encoder(obs.unsqueeze(0))
-        stddev = utils.schedule(self.stddev_schedule, step)
+        if time_report is not None:
+            time_report.end_timer("IO Time")
+
+        if time_report is not None:
+            time_report.start_timer("forward simulation")
+        if len(obs.shape) == 3:
+            obs = self.encoder(obs.unsqueeze(0))
+        elif len(obs.shape) == 4:
+            obs = self.encoder(obs)
+        else:
+            raise Exception("obs shape should be either 3 or 4")
+        stddev = drqv2_utils.schedule(self.stddev_schedule, step)
         dist = self.actor(obs, stddev)
         if eval_mode:
             action = dist.mean
@@ -172,13 +183,15 @@ class DrQV2Agent:
             action = dist.sample(clip=None)
             if step < self.num_expl_steps:
                 action.uniform_(-1.0, 1.0)
-        return action.cpu().numpy()[0]
+        if time_report is not None:
+            time_report.end_timer("forward simulation")
+        return action.cpu().numpy()
 
     def update_critic(self, obs, action, reward, discount, next_obs, step):
         metrics = dict()
 
         with torch.no_grad():
-            stddev = utils.schedule(self.stddev_schedule, step)
+            stddev = drqv2_utils.schedule(self.stddev_schedule, step)
             dist = self.actor(next_obs, stddev)
             next_action = dist.sample(clip=self.stddev_clip)
             target_Q1, target_Q2 = self.critic_target(next_obs, next_action)
@@ -206,7 +219,7 @@ class DrQV2Agent:
     def update_actor(self, obs, step):
         metrics = dict()
 
-        stddev = utils.schedule(self.stddev_schedule, step)
+        stddev = drqv2_utils.schedule(self.stddev_schedule, step)
         dist = self.actor(obs, stddev)
         action = dist.sample(clip=self.stddev_clip)
         log_prob = dist.log_prob(action).sum(-1, keepdim=True)
@@ -227,16 +240,16 @@ class DrQV2Agent:
 
         return metrics
 
-    def update(self, replay_iter, step, time_report=None):
+    def update(self, replay_iter, step, time_report):
         metrics = dict()
 
         if step % self.update_every_steps != 0:
             return metrics
-
+        
         batch = next(replay_iter)
-        obs, action, reward, discount, next_obs = utils.to_torch(
-            batch, self.device)
-
+        obs, action, reward, discount, next_obs = drqv2_utils.to_torch(
+            batch, self.device) # obs: batch_size * 9 * 84 * 84
+        
         # augment
         obs = self.aug(obs.float())
         next_obs = self.aug(next_obs.float())
@@ -244,26 +257,21 @@ class DrQV2Agent:
         obs = self.encoder(obs)
         with torch.no_grad():
             next_obs = self.encoder(next_obs)
-
         if self.use_tb:
             metrics['batch_reward'] = reward.mean().item()
 
         # update critic
-        if time_report:
-            self.time_report.start_timer("actor training")
+        time_report.start_timer("critic training")
         metrics.update(
             self.update_critic(obs, action, reward, discount, next_obs, step))
-        if time_report:
-            self.time_report.end_timer("actor training")
+        time_report.end_timer("critic training")
+
         # update actor
-        if time_report:
-            self.time_report.start_timer("critic training")
+        time_report.start_timer("actor training")
         metrics.update(self.update_actor(obs.detach(), step))
-        if time_report:
-            self.time_report.start_timer("critic training")
+        time_report.end_timer("actor training")
 
         # update critic target
-        utils.soft_update_params(self.critic, self.critic_target,
+        drqv2_utils.soft_update_params(self.critic, self.critic_target,
                                  self.critic_target_tau)
-
         return metrics

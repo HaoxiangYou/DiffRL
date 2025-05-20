@@ -21,20 +21,18 @@ import dm_env
 from dm_env import specs
 from tensorboardX import SummaryWriter
 import envs
-from externals.drqv2 import utils
+from externals.drqv2 import drqv2_utils
 from externals.drqv2 import dmc
-from externals.drqv2.logger import Logger
 from externals.drqv2.replay_buffer import ReplayBufferStorage, make_replay_loader
 from viewer.video_recorder import VideoRecorder
 from utils.common import *
-from viewer.dmc_viewer import DMCViewer
 from utils.time_report import TimeReport
 from utils.average_meter import AverageMeter
 import time
-import yaml
 from collections import defaultdict
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+sys.path.append(os.path.join(project_dir, "externals/drqv2"))
 
 torch.backends.cudnn.benchmark = True
 
@@ -134,14 +132,14 @@ class Workspace:
         self.img_height = cfg["params"]["config"].get("img_height", 84)
         self.img_width = cfg["params"]["config"].get("img_width", 84)
         self.if_render = cfg["params"]["general"]["render"]
-        utils.set_seed_everywhere(cfg.seed)
+        drqv2_utils.set_seed_everywhere(cfg.seed)
         self.device = torch.device(cfg.device)
         self.setup()
 
         self.agent = make_agent(self.train_env.observation_spec(),
                                 self.train_env.action_spec(),
                                 self.cfg.agent)
-        self.timer = utils.Timer()
+        self.timer = drqv2_utils.Timer()
         self._global_step = 0
         self._global_episode = 0
         self._num_episode_finished = 0
@@ -220,7 +218,7 @@ class Workspace:
             self.video_recorder.save("eval_traj_{}.mp4".format(i))
 
     def eval(self, file_name):
-        eval_until_episode = utils.Until(self.cfg.num_eval_episodes)
+        eval_until_episode = drqv2_utils.Until(self.cfg.num_eval_episodes)
         step, episode, total_reward = 0, 0, 0
         save_dir = self.work_dir / "eval" / file_name 
         joint_qs = []
@@ -230,7 +228,7 @@ class Workspace:
             time_step = self.eval_env.reset(env_ids = None, force_reset = True)
             joint_qs.append(self.eval_env.env.state.joint_q.view(self.eval_env.num_envs, -1).detach().clone())
             while not time_step[0].last():
-                with torch.no_grad(), utils.eval_mode(self.agent):
+                with torch.no_grad(), drqv2_utils.eval_mode(self.agent):
                     actions = self.agent.act(time_step[0].observation,
                                             self.global_step,
                                             eval_mode=True)
@@ -306,13 +304,13 @@ class Workspace:
         
         self.time_report.start_timer("algorithm")
 
-        train_until_step = utils.Until(self.cfg.num_train_frames,
+        train_until_step = drqv2_utils.Until(self.cfg.num_train_frames,
                                        self.cfg.action_repeat)
-        seed_until_step = utils.Until(self.cfg.num_seed_frames,
+        seed_until_step = drqv2_utils.Until(self.cfg.num_seed_frames,
                                       self.cfg.action_repeat)
-        eval_every_step = utils.Every(self.cfg.eval_every_frames,
+        eval_every_step = drqv2_utils.Every(self.cfg.eval_every_frames,
                                       self.cfg.action_repeat)
-        save_every_step = utils.Every(self.cfg.save_every_frames,
+        save_every_step = drqv2_utils.Every(self.cfg.save_every_frames,
                                       self.cfg.action_repeat)
 
         actor_step, episode_step, episode_reward = 0, 0, 0
@@ -339,7 +337,7 @@ class Workspace:
             time_start_epoch = time.time()
             # sample action
             # output action with shape (num_envs, action_size)
-            with torch.no_grad(), utils.eval_mode(self.agent):
+            with torch.no_grad(), drqv2_utils.eval_mode(self.agent):
                 self.time_report.start_timer("IO Time")
                 obs = torch.from_numpy(np.array([time_step.observation for time_step in time_steps], dtype=np.uint8)).to(self.device)
                 self.time_report.end_timer("IO Time")
