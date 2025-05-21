@@ -103,7 +103,7 @@ def print_info(*message):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--log_dir', default='./logs/logs_curl', type=str)
+    parser.add_argument('--logdir', default='./logs/curl', type=str)
     parser.add_argument('--cfg', default='./cfg/curl/hopper.yaml', type=str)
     args = parser.parse_args()
     return args
@@ -233,23 +233,23 @@ def main():
 
     # make directory
     exp_name = utils.get_time_stamp()
-    args.log_dir = os.path.join(args.log_dir, exp_name)
+    args.logdir = os.path.join(args.logdir, exp_name)
 
-    utils.make_dir(args.log_dir)
-    video_dir = utils.make_dir(os.path.join(args.log_dir, 'video'))
-    model_dir = utils.make_dir(os.path.join(args.log_dir, 'model'))
-    buffer_dir = utils.make_dir(os.path.join(args.log_dir, 'buffer'))
-    time_report_dir = pathlib.Path(args.log_dir).expanduser() / "time_reports"
+    utils.make_dir(args.logdir)
+    video_dir = utils.make_dir(os.path.join(args.logdir, 'video'))
+    model_dir = utils.make_dir(os.path.join(args.logdir, 'model'))
+    buffer_dir = utils.make_dir(os.path.join(args.logdir, 'buffer'))
+    time_report_dir = pathlib.Path(args.logdir).expanduser() / "time_reports"
 
     if cfg["params"]["misc"]["save_video"]:
         video = VideoRecorder(fps=int(1/eval_env.env.sim_dt))
     else:
         video = None
 
-    with open(os.path.join(args.log_dir, 'args.json'), 'w') as f:
+    with open(os.path.join(args.logdir, 'args.json'), 'w') as f:
         json.dump(vars(args), f, sort_keys=True, indent=4)
 
-    with open(os.path.join(args.log_dir, 'config.yaml'), 'w') as f:
+    with open(os.path.join(args.logdir, 'config.yaml'), 'w') as f:
         yaml.dump(cfg, f, default_flow_style=False)
 
     device = torch.device(cfg["params"]["general"]["device"] if torch.cuda.is_available() else 'cpu')
@@ -280,7 +280,7 @@ def main():
         device=device
     )
 
-    L = Logger(args.log_dir, use_tb=cfg["params"]["misc"]["save_tb"])
+    L = Logger(args.logdir, use_tb=cfg["params"]["misc"]["save_tb"])
 
     global_steps, episode, episode_reward, done =0, 0, np.zeros(num_envs, dtype=np.float64), np.zeros(num_envs, dtype=np.int32)
     start_time = time.time()

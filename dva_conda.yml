@@ -1,4 +1,4 @@
-name: dva
+name: newdva
 channels:
   - pytorch
   - defaults
@@ -24,4 +24,5 @@ dependencies:
     - hydra-submitit-launcher==1.1.5
     - ruamel.yaml==0.17.4
     - mujoco==3.3.0
-    
+    - termcolor==3.1.0
+    - scikit-image==0.19.3

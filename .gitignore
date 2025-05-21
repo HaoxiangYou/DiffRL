@@ -168,11 +168,6 @@ logs/
 outputs/
 
 examples/logs/
-examples/logs_drqv2/
-examples/logs_dreamerv3/
-examples/logs_teacher/
-examples/logs_curl/
-examples/logs_diff_render/
 examples/*.sh
 examples/scripts/
 .vscode/
