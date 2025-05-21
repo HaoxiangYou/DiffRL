@@ -1,5 +1,5 @@
 # D.VA
-Official Implementation of 
+This repository provides an implementation of the paper:
 <td style="padding:20px;width:75%;vertical-align:middle">
       <a href="https://haoxiangyou.github.io/Dva_website/" target="_blank">
       <b> Accelerating Visual-Policy Learning through Parallel Differentiable Simulation
@@ -17,6 +17,11 @@ Official Implementation of
 
 <br>
 
+<p align="center">
+  <img src="figures/loco_mujoco.gif" width=100%>
+</p>
+
+<br>
 If you use this repo in your research, please consider citing the paper as follows:
 
 ```
@@ -98,11 +103,32 @@ To run SHAC with differentiable render, using the following command
 ```
 python train_shac.py --cfg ./cfg/shac/hopper_vis.yaml  --logdir ./logs/Hopper/shac
 ```
-Note, the SHAC baseline requires a differentiable environment, which is not used by default in other methods.
+The SHAC baseline requires environments with differentiable rendering, which differs from other methods that use ManiSkill as the default rendering engine.
 
 To run our method (D.VA) under the same differentiable setting, simply replace the config file:`cfg/dva/hopper.yaml` to `cfg/dva/diff_render_hopper.yaml` 
 
 ## Methods
+
+### D.Va
+
+D.Va is a quasi-analytical policy gradient algorithm for learning image-based continuous control tasks. It extends [SHAC](https://github.com/NVlabs/DiffRL) to operate directly from pixels by decoupling the rendering process from the gradient computation pipeline.
+  <p align="center">
+  <img src="figures/computation_graph.jpg" width="100%"/>
+</p>
+This decoupling brings several key benefits:
+
+- 📉 Reduced memory usage: Jacobians from the rendering process are dropped, significantly lowering memory requirements.
+
+- ⚡ Faster backward pass: Omitting large Jacobian matrices during rendering results in a 2–3× speedup in gradient computation.
+
+- 🎯 Smoother optimization: Gradient norms are better normalized, leading to more stable and efficient training.
+
+- 🧩 No need for external differentiable renderers: D.VA avoids dependence on additional differentiable rendering software.
+
+### Differentiable Rendering
+
+Although D.VA does not require any additional differentiable rendering software, we also provide optional differentiable rendering modules as part of this project for advanced use cases and experimentation.
+A separate repository containing these differentiable rendering software can be found [here](https://github.com/HaoxiangYou/torch3d_robo).
 
 ## Results
 
@@ -131,7 +157,7 @@ All other code in this repository is licensed under the MIT License.
 
 ## Acknowledgement
 
-1. The main codebase is built on top of [DiffRL](https://github.com/NVlabs/DiffRL) by Jie Xu (NVIDIA).
+1. The main codebase is built on top of [SHAC](https://github.com/NVlabs/DiffRL) by Jie Xu (NVIDIA).
 
 2. CURL implementation is based on the original [repository](https://github.com/MishaLaskin/curl) by Michael Laskin.
 
