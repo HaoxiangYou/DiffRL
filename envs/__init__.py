@@ -3,7 +3,6 @@ from envs.dflex_env import DFlexEnv
 from envs.ant import AntEnv
 from envs.cheetah import CheetahEnv
 from envs.hopper import HopperEnv
-from envs.snu_humanoid import SNUHumanoidEnv
 from envs.cartpole import CartPoleEnv
 from envs.humanoid import HumanoidEnv
 try:

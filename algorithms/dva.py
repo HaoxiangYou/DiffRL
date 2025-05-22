@@ -24,7 +24,6 @@ from utils.common import *
 import utils.torch_utils as tu
 from utils.running_mean_std import RunningMeanStd
 from utils.dataset import CriticDataset, ActorSupervisedDataset
-from utils.image_aug import RandomShiftsAug
 from utils.time_report import TimeReport
 from utils.average_meter import AverageMeter
 from viewer.video_recorder import VideoRecorder
@@ -68,10 +67,6 @@ class DVA:
 
         self.steps_num = cfg["params"]["config"]["steps_num"]
 
-        self.enable_img_aug = cfg["params"]["config"].get("img_aug", False)
-        if self.enable_img_aug:
-            self.aug = RandomShiftsAug(pad=cfg["params"]["config"].get("img_aug_padding", 4))
-
         self.max_epochs = cfg["params"]["config"]["max_epochs"]
         self.actor_lr = float(cfg["params"]["config"]["actor_learning_rate"])
         self.critic_lr = float(cfg['params']['config']['critic_learning_rate'])
@@ -96,11 +91,6 @@ class DVA:
 
         self.truncate_grad = cfg["params"]["config"]["truncate_grads"]
         self.grad_norm = cfg["params"]["config"]["grad_norm"]
-        
-        self.policy_update_method = cfg["params"]["config"].get("policy_update_method", "gradient-descent")
-        if self.policy_update_method == "trajopt-supervised":
-            self.trajopt_lr = float(cfg["params"]["config"]["trajopt_learning_rate"])
-            self.actor_supervised_iterations = cfg["params"]["config"].get("actor_supervised_iterations", 1)
 
         if cfg['params']['general']['train']:
             self.log_dir = cfg["params"]["general"]["logdir"]
@@ -145,19 +135,11 @@ class DVA:
         # replay buffer
         self.state_buf = torch.zeros((self.steps_num, self.num_envs, self.num_joint_q + self.num_joint_qd), dtype = torch.float32, device = self.device)
         self.state_obs_buf = torch.zeros((self.steps_num, self.num_envs, self.num_state_obs), dtype = torch.float32, device = self.device)
-        if self.enable_vis_obs and self.policy_update_method == "trajopt-supervised":
-            self.vis_obs_buf = torch.zeros((self.steps_num, self.num_envs) + self.num_vis_obs, dtype=torch.uint8, device = self.device)
         self.rew_buf = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.done_mask = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.next_values = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.target_values = torch.zeros((self.steps_num, self.num_envs), dtype = torch.float32, device = self.device)
         self.ret = torch.zeros((self.num_envs), dtype = torch.float32, device = self.device)
-
-        # for kl divergence computing
-        self.old_mus = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
-        self.old_sigmas = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
-        self.mus = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
-        self.sigmas = torch.zeros((self.steps_num, self.num_envs, self.num_actions), dtype = torch.float32, device = self.device)
 
         # video recorder
         self.video_recorder = VideoRecorder(fps=int(1/self.env.sim_dt))
@@ -221,8 +203,6 @@ class DVA:
                 self.state_buf[i,:,:self.num_joint_q] = joint_qs
                 self.state_buf[i,:,self.num_joint_q:] = joint_qds
                 self.state_obs_buf[i] = state_obs.clone()
-                if self.enable_vis_obs and self.policy_update_method == "trajopt-supervised":
-                    self.vis_obs_buf[i] = vis_obs.clone()
 
             # detach the obs from computation graph
             if self.enable_vis_obs:
@@ -340,7 +320,7 @@ class DVA:
         aux_infos = {"actions": actions, "states": self.state_buf}
         return actor_loss, aux_infos
     
-    def update_actor_gradient_descent(self):
+    def update_actor(self):
         def actor_closure():
             self.actor_optimizer.zero_grad()
 
@@ -368,87 +348,6 @@ class DVA:
 
             return actor_loss
         self.actor_optimizer.step(actor_closure)
-    
-    def update_actor_trajopt_supervised(self):
-        
-        def update_actions(actor_loss, actions):
-            # NOTE when calculate actor_loss, we normalize with num_step * num_env
-            # However, we do not want them to affect the update to action, (which is equivalent to divide trajopt_lr by them),
-            # Too small update in actions can cause big numerical precision issue
-            action_grads = torch.autograd.grad(actor_loss * self.num_envs * self.steps_num, actions)
-            with torch.no_grad():
-                actions = [a - self.trajopt_lr * g for a, g in zip(actions, action_grads)]
-            return actions
-
-        def compute_supervised_loss(batch_sample):
-            obs = batch_sample["obs"]
-            if self.enable_img_aug:
-                obs = self.aug(obs.float())
-            if isinstance(self.actor, ActorStochasticMLP):
-                if self.enable_vis_obs:
-                    predicted_actions = self.actor.mu_net(self.actor.encoder(obs)) + batch_sample["action_eps"] * self.actor.logstd.exp()
-                else:
-                    predicted_actions = self.actor.mu_net(obs) + batch_sample["action_eps"] * self.actor.logstd.exp()
-            elif isinstance(self.actor, ActorDeterministicMLP):
-                predicted_actions = self.actor(obs)
-            else:
-                raise NotImplementedError
-            # normalize the mse loss by trajopt_lr    
-            return self.num_actions/(2*self.trajopt_lr) * torch.nn.functional.mse_loss(predicted_actions, batch_sample["target_actions"], reduction="mean")            
-        
-        self.time_report.start_timer("compute actor loss")
-        self.time_report.start_timer("forward simulation")
-        actor_loss, aux_infos = self.compute_actor_loss()
-        self.time_report.end_timer("forward simulation")
-        self.time_report.start_timer("backward simulation")
-        if self.enable_vis_obs:
-            obs_buf = self.vis_obs_buf.clone().view(-1, *self.num_vis_obs)
-        else:
-            obs_buf = self.state_obs_buf.clone().view(-1, self.num_state_obs)
-        self.time_report.end_timer("backward simulation")
-
-        self.time_report.start_timer("actor supervised training")
-        # obtain eps for stochastic policy
-        with torch.no_grad():
-            action_eps = None
-            if isinstance(self.actor, models.actor.ActorStochasticMLP):
-                if self.enable_vis_obs:
-                    action_eps = (torch.stack(aux_infos["actions"]).view(-1, self.num_actions) - self.actor.mu_net(self.actor.encoder(obs_buf))) / self.actor.logstd.exp()
-                else:
-                    action_eps = (torch.stack(aux_infos["actions"]).view(-1, self.num_actions) - self.actor.mu_net(obs_buf)) / self.actor.logstd.exp()
-
-        actions = aux_infos["actions"]
-        actions = update_actions(actor_loss, actions)
-
-        dataset = ActorSupervisedDataset(batch_zie=self.batch_size, obs=obs_buf, target_actions=torch.stack(actions).view(-1, self.num_actions), action_eps=action_eps)
-        total_supervised_loss = 0
-        for i in range(self.actor_supervised_iterations):    
-            # NOTE currently still using full batch for single update
-            self.actor_optimizer.zero_grad()
-            for j in range(len(dataset)):
-                batch_sample = dataset[j]
-                actor_supervised_loss = compute_supervised_loss(batch_sample)
-                actor_supervised_loss /= len(dataset)
-                actor_supervised_loss.backward()
-                total_supervised_loss += (actor_supervised_loss.detach().cpu().item() * (self.trajopt_lr))
-            
-            with torch.no_grad():
-                self.grad_norm_before_clip = tu.grad_norm(self.actor.parameters())
-                if self.truncate_grad:
-                    clip_grad_norm_(self.actor.parameters(), self.grad_norm)
-                self.grad_norm_after_clip = tu.grad_norm(self.actor.parameters()) 
-                
-                # sanity check
-                if torch.isnan(self.grad_norm_before_clip) or self.grad_norm_before_clip > 1000000.:
-                    print('NaN gradient')
-                    raise ValueError
-
-            self.actor_optimizer.step()
-            
-        self.actor_supervised_loss = total_supervised_loss / (self.actor_supervised_iterations) 
-        
-        self.time_report.end_timer("actor supervised training")
-        self.time_report.end_timer("compute actor loss")
         
     @torch.no_grad()
     def evaluate_policy(self, num_games, deterministic=False, maximum_eval_length=None):
@@ -571,9 +470,6 @@ class DVA:
         self.time_report.add_timer("evaluation")
         self.time_report.add_timer("actor training")
         self.time_report.add_timer("critic training")
-        if self.policy_update_method == "trajopt-supervised":
-            self.time_report.add_timer("actor supervised training")
-
         self.time_report.start_timer("algorithm")
 
         # initializations
@@ -601,12 +497,7 @@ class DVA:
 
             # train actor
             self.time_report.start_timer("actor training")
-            if self.policy_update_method == "gradient-descent":
-                self.update_actor_gradient_descent()
-            elif self.policy_update_method == "trajopt-supervised":
-                self.update_actor_trajopt_supervised()
-            else:
-                raise NotImplementedError
+            self.update_actor()
             self.time_report.end_timer("actor training")
 
             # train critic
@@ -656,9 +547,6 @@ class DVA:
             self.writer.add_scalar('actor_loss/iter', self.actor_loss, self.iter_count)
             self.writer.add_scalar('value_loss/step', self.value_loss, self.step_count)
             self.writer.add_scalar('value_loss/iter', self.value_loss, self.iter_count)
-            if self.policy_update_method == "trajopt-supervised":
-                self.writer.add_scalar("actor_supervised_loss/step", self.actor_supervised_loss, self.step_count)
-                self.writer.add_scalar("actor_supervised_loss/iter", self.actor_supervised_loss, self.iter_count)
             if len(self.episode_loss_his) > 0:
                 mean_episode_length = self.episode_length_meter.get_mean()
                 mean_policy_loss = self.episode_loss_meter.get_mean()
