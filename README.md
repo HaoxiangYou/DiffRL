@@ -66,7 +66,7 @@ This codebase is built on top of various open-source implementations, which we l
   pip install pytorch3d==0.7.8+pt2.5.1cu124 --extra-index-url https://miropsota.github.io/torch_packages_builder
   ```
 
-### Test Examples
+### Test Example
 
 A test example can be found in the `examples` folder.
 
@@ -139,6 +139,60 @@ A separate repository containing these differentiable rendering software can be 
 
 ## Results
 
+### 🎥 Examples of training
+We provide example videos demonstrating how D.VA learns to control using <strong>only pixel-based observations</strong>. 
+
+The experiments are conducted on a single RTX 4080 GPU.
+
+#### Training Hopper
+<p align="center">
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/hopper_initial.gif" width="100%">
+    <figcaption>Iteration 0 (initial policy)</figcaption>
+  </figure>
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/hopper_it400_4minutes.gif" width="100%">
+    <figcaption>Iteration 400 (4 minutes)</figcaption>
+  </figure>
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/hopper_it8000_1hour.gif" width="100%">
+    <figcaption>Iteration 8000 (1 hour)</figcaption>
+  </figure>
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/hopper_it17600_2-5hours.gif" width="100%">
+    <figcaption>Iteration 17600 (2.5 hours)</figcaption>
+  </figure>
+</p>
+
+#### Training Humanoid
+
+<p align="center">
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/humanoid_initial.gif" width="100%">
+    <figcaption>Iteration 0 (initial policy)</figcaption>
+  </figure>
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/humanoid_it4400_2hours.gif" width="100%">
+    <figcaption>Iteration 4400 (2 hours)</figcaption>
+  </figure>
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/humanoid_it9600_4hours.gif" width="100%">
+    <figcaption>Iteration 9600 (4 hours)</figcaption>
+  </figure>
+  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
+    <img src="figures/humanoid_it36000_15hours.gif" width="100%">
+    <figcaption>Iteration 36000 (15 hours)</figcaption>
+  </figure>
+</p>
+
+
+### Comparison to baselines
+
+We present a comparison of training curves between our method and existing visual-policy learning baselines.
+
+Our approach significantly improves both wall-clock training efficiency and final performance across a range of challenging control tasks.
+
+
 ## Common issues
 
 - RuntimeError: Error building extension 'kernels' for dflex environment
@@ -147,12 +201,12 @@ A separate repository containing these differentiable rendering software can be 
   ```
   cuda_flags = ['-gencode=arch=compute_86,code=compute_86']
   ``` 
-  to the one capabatible to your cuda version should solve the issue.
+  to the one matches your cuda version.
   For more information, please refer to [this issue](https://github.com/NVlabs/DiffRL/issues/12).
 
 - Installing pytorch3d
 
-  We found the official PyTorch3D installation to be problematic in some environments. As a workaround, we recommend using a third-party installation approach, as outlined in [this discussion thread](https://github.com/facebookresearch/pytorch3d/discussions/1752).
+  We found the official installation process for PyTorch3D to be challenging. As a workaround, we recommend using a third-party installation approach, as outlined in [this discussion thread](https://github.com/facebookresearch/pytorch3d/discussions/1752).
 
 ## Licenses
 
@@ -164,13 +218,13 @@ All other code in this repository is licensed under the MIT License.
 
 ## Acknowledgement
 
-1. The main codebase is built on top of [SHAC](https://github.com/NVlabs/DiffRL) by Jie Xu (NVIDIA).
+1. Our codebase is built on top of [SHAC](https://github.com/NVlabs/DiffRL) by Jie Xu (NVIDIA).
 
 2. CURL implementation is based on the original [repository](https://github.com/MishaLaskin/curl) by Michael Laskin.
 
 3. DrQv2 implementation is based on the original [repository](https://github.com/facebookresearch/drqv2) by Denis Yarats (Facebook Research).
 
-4. DreamerV3 implementation is based on the [pytorch implementation](https://github.com/NM512/dreamerv3-torch) by Naoki Morihira.
+4. DreamerV3 implementation is based on the [pytorch reimplementation](https://github.com/NM512/dreamerv3-torch) by Naoki Morihira.
 
-5. We refer the [pytorch_kinematics](https://github.com/UM-ARM-Lab/pytorch_kinematics) , developed by the Autonomous Robotic Manipulation Lab at the University of Michigan, Ann Arbor, to construct the forward kinematics tree used in our differentiable rendering pipeline.
+5. We refer the [pytorch_kinematics](https://github.com/UM-ARM-Lab/pytorch_kinematics) , developed by the Autonomous Robotic Manipulation Lab at the University of Michigan, Ann Arbor, to construct the `forward kinematics tree` used in our [differentiable rendering pipeline](https://github.com/HaoxiangYou/torch3d_robo).
 We have made several modifications to support floating-base systems and multiple joints definition under single link.
