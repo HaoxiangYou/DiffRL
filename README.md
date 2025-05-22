@@ -146,45 +146,49 @@ We provide example videos demonstrating how D.VA learns to control using <strong
 The experiments are conducted on a single RTX 4080 GPU.
 
 #### Training Hopper
-<p align="center">
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/hopper_initial.gif" width="100%">
-    <figcaption>Iteration 0 (initial policy)</figcaption>
-  </figure>
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/hopper_it400_4minutes.gif" width="100%">
-    <figcaption>Iteration 400 (4 minutes)</figcaption>
-  </figure>
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/hopper_it8000_1hour.gif" width="100%">
-    <figcaption>Iteration 8000 (1 hour)</figcaption>
-  </figure>
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/hopper_it17600_2-5hours.gif" width="100%">
-    <figcaption>Iteration 17600 (2.5 hours)</figcaption>
-  </figure>
-</p>
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <img src="figures/hopper_initial.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 0 (initial policy)</p>
+    </td>
+    <td align="center" width="25%">
+      <img src="figures/hopper_it400_4minutes.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 400 (4 minutes)</p>
+    </td>
+    <td align="center" width="25%">
+      <img src="figures/hopper_it8000_1hour.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 8000 (1 hour)</p>
+    </td>
+    <td align="center" width="25%">
+      <img src="figures/hopper_it17600_2-5hours.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 17600 (2.5 hours)</p>
+    </td>
+  </tr>
+</table>
 
 #### Training Humanoid
 
-<p align="center">
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/humanoid_initial.gif" width="100%">
-    <figcaption>Iteration 0 (initial policy)</figcaption>
-  </figure>
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/humanoid_it4400_2hours.gif" width="100%">
-    <figcaption>Iteration 4400 (2 hours)</figcaption>
-  </figure>
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/humanoid_it9600_4hours.gif" width="100%">
-    <figcaption>Iteration 9600 (4 hours)</figcaption>
-  </figure>
-  <figure style="display:inline-block; text-align:center; width:23.5%; margin:0 0.5%;">
-    <img src="figures/humanoid_it36000_15hours.gif" width="100%">
-    <figcaption>Iteration 36000 (15 hours)</figcaption>
-  </figure>
-</p>
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <img src="figures/humanoid_initial.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 0 (initial policy)</p>
+    </td>
+    <td align="center" width="25%">
+      <img src="figures/humanoid_it4400_2hours.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 4400 (2 hours)</p>
+    </td>
+    <td align="center" width="25%">
+      <img src="figures/humanoid_it9600_4hours.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 9600 (4 hours)</p>
+    </td>
+    <td align="center" width="25%">
+      <img src="figures/humanoid_it36000_15hours.gif" width="100%"><br>
+      <p style="font-size:14px;">Iteration 36000 (15 hours)</p>
+    </td>
+  </tr>
+</table>
 
 
 ### Comparison to baselines
