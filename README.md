@@ -87,7 +87,7 @@ python train_dva.py --cfg ./cfg/dva/hopper.yaml --logdir ./logs/Hopper/dva
 
 Evaluation videos will be saved in a directory following the pattern:`logs/Hopper/dva/$DATE/eval`. Evaluation videos are saved every `$save_interval` training episodes, as specified in the corresponding YAML configuration file, e.g., `cfg/dva/hopper.yaml`.
 
-To run `curl`, or `state2visDagger` use the following command pattern:
+To run `curl`, or `state2visDagger` use the following command:
 ```
 python train_$method.py --cfg ./cfg/$method/hopper.yaml --logdir ./logs/Hopper/$method
 ```
@@ -99,7 +99,7 @@ To run `drqv2`, using the following command:
 python train_drqv2.py task=hopper
 ```
 
-To run `dreamerv3`
+To run `dreamerv3`, using the following command:
 
 ```
 python --configs dflex_vision --task dflex_$env --logdir ./logs/dreamerv3/$env 
@@ -112,14 +112,14 @@ python train_shac.py --cfg ./cfg/shac/hopper_vis.yaml  --logdir ./logs/Hopper/sh
 ```
 Note, the SHAC baseline requires environments with differentiable rendering, which differs from other methods that use ManiSkill as the default rendering engine.
 
-To run our method (D.VA) under the same differentiable rendering, simply replace the config file:`cfg/dva/hopper.yaml` to `cfg/dva/diff_render_hopper.yaml` 
+To run our method (D.VA) under the same `differentiable rendering`, simply replace the config file:`cfg/dva/hopper.yaml` to `cfg/dva/diff_render_hopper.yaml` 
 
 ## Methods
 
 ### D.Va
 
 D.Va is a quasi-analytical policy gradient algorithm for learning image-based continuous control tasks. It extends [SHAC](https://github.com/NVlabs/DiffRL) to operate directly from pixels by decoupling the rendering process from the gradient computation pipeline.
-  <p align="center">
+<p align="center">
   <img src="figures/computation_graph.jpg" width="100%"/>
 </p>
 This decoupling brings several key benefits:
@@ -130,16 +130,17 @@ This decoupling brings several key benefits:
 
 - 🎯 Smoother optimization: Gradient norms are better normalized, leading to more stable and efficient training.
 
-- 🧩 No need for external differentiable renderers: D.VA avoids dependence on additional differentiable rendering software.
+- 🔄 No need for external differentiable renderers: D.VA avoids dependence on additional differentiable rendering software.
 
-### Differentiable Rendering
+### 🧩 Differentiable Rendering for Robot Learning
 
-Although D.VA does not require any additional differentiable rendering software, we also provide optional differentiable rendering modules as part of this project for advanced use cases and experimentation.
-A separate repository containing these differentiable rendering software can be found [here](https://github.com/HaoxiangYou/torch3d_robo).
+Although <strong>D.VA</strong> does not require any additional differentiable rendering software, we also provide optional differentiable rendering modules as part of this project for advanced use cases and experimentation.
+Most implementations are located in the `viewer/torch3d_robo` directory.
+A standalone version of this differentiable rendering library is also available in a [separate repository](https://github.com/HaoxiangYou/torch3d_robo).
 
 ## Results
 
-### 🎥 Examples of training
+### 🎥 Examples of Training
 We provide example videos demonstrating how D.VA learns to control using <strong>only pixel-based observations</strong>. 
 
 The experiments are conducted on a single RTX 4080 GPU.
@@ -192,6 +193,15 @@ We present a comparison of training curves between our method and existing visua
 
 Our approach significantly improves both wall-clock training efficiency and final performance across a range of challenging control tasks.
 
+<p align="center">
+  <img src="figures/vs_rl.jpg" width="100%"/>
+</p>
+<p align="center">
+  <img src="figures/vs_dagger.jpg" width="100%"/>
+</p>
+<p align="center">
+  <img src="figures/vs_shac_diff_rendering.jpg" width="100%"/>
+</p>
 
 ## Common issues
 
