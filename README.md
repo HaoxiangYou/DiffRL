@@ -150,19 +150,19 @@ The experiments are conducted on a single RTX 4080 GPU.
   <tr>
     <td align="center" width="25%">
       <img src="figures/hopper_initial.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 0 (initial policy)</p>
+      <p style="font-size:10px;">Iter 0 (initial policy)</p>
     </td>
     <td align="center" width="25%">
       <img src="figures/hopper_it400_4minutes.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 400 (4 minutes)</p>
+      <p style="font-size:10px;">Iter 400 (4 minutes)</p>
     </td>
     <td align="center" width="25%">
       <img src="figures/hopper_it8000_1hour.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 8000 (1 hour)</p>
+      <p style="font-size:10px;">Iter 8000 (1 hour)</p>
     </td>
     <td align="center" width="25%">
       <img src="figures/hopper_it17600_2-5hours.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 17600 (2.5 hours)</p>
+      <p style="font-size:10px;">Iter 17600 (2.5 hours)</p>
     </td>
   </tr>
 </table>
@@ -173,19 +173,19 @@ The experiments are conducted on a single RTX 4080 GPU.
   <tr>
     <td align="center" width="25%">
       <img src="figures/humanoid_initial.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 0 (initial policy)</p>
+      <p style="font-size:10px;">Iter 0 (initial policy)</p>
     </td>
     <td align="center" width="25%">
       <img src="figures/humanoid_it4400_2hours.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 4400 (2 hours)</p>
+      <p style="font-size:10px;">Iter 4400 (2 hours)</p>
     </td>
     <td align="center" width="25%">
       <img src="figures/humanoid_it9600_4hours.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 9600 (4 hours)</p>
+      <p style="font-size:10px;">Iter 9600 (4 hours)</p>
     </td>
     <td align="center" width="25%">
       <img src="figures/humanoid_it36000_15hours.gif" width="100%"><br>
-      <p style="font-size:10px;">Iteration 36000 (15 hours)</p>
+      <p style="font-size:10px;">Iter 36000 (15 hours)</p>
     </td>
   </tr>
 </table>
