@@ -131,6 +131,8 @@ def urdf_load(
     filename, 
     xform, 
     floating=False, 
+    damping=10.0,
+    stiffness = 100,
     armature=0.0, 
     shape_ke=1.e+4, 
     shape_kd=1.e+4, 
@@ -196,7 +198,6 @@ def urdf_load(
 
         lower = -1.e+3
         upper = 1.e+3
-        damping = 0.0
 
         # limits
         if (joint.limit):
@@ -220,6 +221,8 @@ def urdf_load(
             limit_upper=upper,
             limit_ke=limit_ke,
             limit_kd=limit_kd,
+            armature=armature,
+            stiffness=stiffness,
             damping=damping)
 
         # add collisions

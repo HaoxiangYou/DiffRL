@@ -6,6 +6,7 @@ from envs.hopper import HopperEnv
 from envs.snu_humanoid import SNUHumanoidEnv
 from envs.cartpole import CartPoleEnv
 from envs.humanoid import HumanoidEnv
+from envs.anymal import AnymalEnv
 try:
     from envs.dflex_diff_render_env import DFlexDiffRenderEnv
     from envs.cartpole_diff_render_env import CartPoleDiffRenderEnv
