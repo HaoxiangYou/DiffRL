@@ -146,6 +146,20 @@ class AnymalEnv(DFlexEnv):
 
         actions = torch.clip(actions, -1., 1.)
 
+        ##### an ugly fix for simulation nan values #### # reference: https://github.com/pytorch/pytorch/issues/15131
+        def create_hook():
+            def hook(grad):
+                torch.nan_to_num(grad, 0.0, 0.0, 0.0, out = grad)
+            return hook
+        
+        if self.state.joint_q.requires_grad:
+            self.state.joint_q.register_hook(create_hook())
+        if self.state.joint_qd.requires_grad:
+            self.state.joint_qd.register_hook(create_hook())
+        if actions.requires_grad:
+            actions.register_hook(create_hook())
+        #################################################
+
         self.actions = actions.clone()
 
         self.state.joint_act.view(self.num_envs, -1)[:, 6:] = actions * self.action_strength
@@ -357,3 +371,14 @@ class AnymalEnv(DFlexEnv):
         if self.early_termination:
             self.reset_buf = torch.where(self.state_obs_buf[:, 0] < self.termination_height, torch.ones_like(self.reset_buf), self.reset_buf)
         self.reset_buf = torch.where(self.progress_buf > self.episode_length - 1, torch.ones_like(self.reset_buf), self.reset_buf)
+
+        # an ugly fix for simulation nan values
+        nan_masks = torch.logical_or(torch.isnan(self.state_obs_buf).sum(-1) > 0, torch.logical_or(torch.isnan(self.state.joint_q.view(self.num_environments, -1)).sum(-1) > 0, torch.isnan(self.state.joint_qd.view(self.num_environments, -1)).sum(-1) > 0))
+        inf_masks = torch.logical_or(torch.isinf(self.state_obs_buf).sum(-1) > 0, torch.logical_or(torch.isinf(self.state.joint_q.view(self.num_environments, -1)).sum(-1) > 0, torch.isinf(self.state.joint_qd.view(self.num_environments, -1)).sum(-1) > 0))
+        invalid_value_masks = torch.logical_or((torch.abs(self.state.joint_q.view(self.num_environments, -1)) > 1e6).sum(-1) > 0,
+                                                (torch.abs(self.state.joint_qd.view(self.num_environments, -1)) > 1e6).sum(-1) > 0)   
+        invalid_masks = torch.logical_or(invalid_value_masks, torch.logical_or(nan_masks, inf_masks))
+        
+        self.reset_buf = torch.where(invalid_masks, torch.ones_like(self.reset_buf), self.reset_buf)
+    
+        self.rew_buf[invalid_masks] = 0.
